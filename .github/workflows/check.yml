@@ -1,0 +1,84 @@
+name: Tennis Court Checker
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check courts
+        run: |
+          python3 << 'EOF'
+          import urllib.request, json, datetime
+
+          TOKEN = "8979299516:AAEwY_fKOaflP-Y3o-DnJqKrzCViLJvel-c"
+          CHAT_ID = "839952182"
+          TARGET_DAYS = [2, 3, 4, 5]  # อังคาร-ศุกร์
+          TARGET_TIMES = ["18:00", "19:00"]
+
+          LOCATIONS = [
+            {"locId": "LOC001", "locName": "Crystal Sports",
+             "courts": [{"id":1,"name":"North-1"},{"id":2,"name":"North-2"},{"id":3,"name":"North-3"},
+                        {"id":4,"name":"Center-1"},{"id":5,"name":"Center-2"},
+                        {"id":6,"name":"South-1"},{"id":7,"name":"South-2"},{"id":8,"name":"South-3"}]},
+            {"locId": "LOC002", "locName": "Crystal Sports G",
+             "courts": [{"id":18,"name":"G North-1"},{"id":19,"name":"G North-2"},{"id":20,"name":"G North-3"},
+                        {"id":21,"name":"G Center-1"},{"id":22,"name":"G Center-2"},{"id":23,"name":"G Center-3"},
+                        {"id":24,"name":"G South-1"},{"id":25,"name":"G South-2"},{"id":26,"name":"G South-3"}]}
+          ]
+
+          def fetch_slots(date_str, stadium_id, loc_id):
+            try:
+              body = json.dumps({"date": date_str, "stadiumId": str(stadium_id), "locId": loc_id}).encode()
+              req = urllib.request.Request(
+                "https://crystalsports-booking.kegroup.co.th/api_helper.php?action=getAvailableStadiums",
+                data=body, headers={"Content-Type": "application/json"}, method="POST"
+              )
+              with urllib.request.urlopen(req, timeout=10) as r:
+                return json.loads(r.read())
+            except:
+              return []
+
+          def send_telegram(msg):
+            body = json.dumps({"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}).encode()
+            req = urllib.request.Request(
+              f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+              data=body, headers={"Content-Type": "application/json"}, method="POST"
+            )
+            urllib.request.urlopen(req, timeout=10)
+
+          today = datetime.date.today()
+          alerts = []
+
+          for i in range(15):
+            d = today + datetime.timedelta(days=i)
+            if d.weekday() + 1 not in TARGET_DAYS:  # weekday(): Mon=0, so Tue=1=day 2
+              continue
+            date_str = d.strftime("%Y-%m-%d")
+            found = []
+
+            for loc in LOCATIONS:
+              for court in loc["courts"]:
+                slots = fetch_slots(date_str, court["id"], loc["locId"])
+                all_booked = all(str(s.get("reservestatus")) == "1" for s in slots) if slots else True
+                if all_booked:
+                  continue
+                for s in slots:
+                  if str(s.get("reservestatus")) == "0" and s.get("timeName") in TARGET_TIMES:
+                    found.append(f'{loc["locName"]} {s["timeName"]} → {court["name"]}')
+
+            if found:
+              day_th = ["จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์","อาทิตย์"][d.weekday()]
+              alerts.append(f'📅 <b>{day_th} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
+
+          if alerts:
+            msg = "🎾 <b>Crystal Sports — พบคอร์ทว่าง!</b>\n\n" + "\n\n".join(alerts)
+            msg += '\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>'
+            send_telegram(msg)
+            print("Sent:", alerts)
+          else:
+            print("No courts available")
+          EOF
