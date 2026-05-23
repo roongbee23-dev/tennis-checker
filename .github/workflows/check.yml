@@ -63,16 +63,11 @@ jobs:
             alerts = []
 
             for i in range(15):
-              d = today + datetime.timedelta(days=i)
-              if d.weekday()+1 not in target_days and d.weekday() not in target_days:
-                # weekday 0=Mon แต่เราใช้ 1=Mon ต้องแปลง
-                dow = (d.weekday()+1) % 7  # แปลง Mon=0 → 1, Sun=6 → 0
-                if dow not in target_days:
-                  continue
-              else:
-                dow = (d.weekday()+1) % 7
-                if dow not in target_days:
-                  continue
+            d = today + datetime.timedelta(days=i)
+            # แปลง Python weekday (Mon=0) เป็น format เว็บ (Sun=0, Mon=1, ..., Sat=6)
+            dow = (d.weekday() + 1) % 7
+            if dow not in target_days:
+              continue
 
               date_str = d.strftime("%Y-%m-%d")
               found = []
