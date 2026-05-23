@@ -30,7 +30,7 @@ jobs:
                        {"id":24,"name":"G South-1"},{"id":25,"name":"G South-2"},{"id":26,"name":"G South-3"}]}
           ]
 
-          groups_raw = os.environ.get("COURT_GROUPS","[]")
+          groups_raw = os.environ.get("COURT_GROUPS", "[]")
           groups = json.loads(groups_raw) if groups_raw else []
 
           def fetch_slots(date_str, stadium_id, loc_id):
@@ -63,27 +63,23 @@ jobs:
             alerts = []
 
             for i in range(15):
-            d = today + datetime.timedelta(days=i)
-            # แปลง Python weekday (Mon=0) เป็น format เว็บ (Sun=0, Mon=1, ..., Sat=6)
-            dow = (d.weekday() + 1) % 7
-            if dow not in target_days:
-              continue
-
+              d = today + datetime.timedelta(days=i)
+              dow = (d.weekday() + 1) % 7
+              if dow not in target_days:
+                continue
               date_str = d.strftime("%Y-%m-%d")
               found = []
-
               for loc in LOCATIONS:
                 for court in loc["courts"]:
                   slots = fetch_slots(date_str, court["id"], loc["locId"])
                   if not slots:
                     continue
-                  all_one = all(str(s.get("reservestatus"))=="1" for s in slots)
+                  all_one = all(str(s.get("reservestatus")) == "1" for s in slots)
                   if all_one:
                     continue
                   for s in slots:
-                    if str(s.get("reservestatus"))=="0" and s.get("timeName") in target_times:
+                    if str(s.get("reservestatus")) == "0" and s.get("timeName") in target_times:
                       found.append(f'{loc["locName"]} {s["timeName"]} → {court["name"]}')
-
               if found:
                 day_th = day_names[dow]
                 alerts.append(f'📅 <b>{day_th} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
