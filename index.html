@@ -145,7 +145,7 @@
 const TOKEN = "8979299516:AAEwY_fKOaflP-Y3o-DnJqKrzCViLJvel-c";
 const CHAT_ID = "839952182";
 const DAY_TH = {0:"อาทิตย์",1:"จันทร์",2:"อังคาร",3:"พุธ",4:"พฤหัส",5:"ศุกร์",6:"เสาร์"};
-const INTERVAL = 5 * 60 * 1000;
+const INTERVAL = 30 * 60 * 1000;
 
 const LOCATIONS = [
   { locId:"LOC001", locName:"Crystal Sports",
@@ -390,7 +390,7 @@ function toggleAuto() {
     cdTimer = setInterval(() => { secs = Math.max(0,secs-1); upd(); }, 1000);
   } else {
     btn.classList.remove("on");
-    btn.textContent = "⏰ Auto (ทุก 5 นาที)";
+    btn.textContent = "⏰ Auto (ทุก 30 นาที)";
     clearInterval(autoTimer); clearInterval(cdTimer);
   }
 }
