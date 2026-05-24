@@ -15,10 +15,10 @@ jobs:
         run: |
           python3 << 'EOF'
           import urllib.request, json, datetime, os
-
+          
           TOKEN = "8979299516:AAEwY_fKOaflP-Y3o-DnJqKrzCViLJvel-c"
           CHAT_ID = "839952182"
-
+          
           LOCATIONS = [
             {"locId":"LOC001","locName":"Crystal Sports",
              "courts":[{"id":1,"name":"North-1"},{"id":2,"name":"North-2"},{"id":3,"name":"North-3"},
@@ -29,10 +29,10 @@ jobs:
                        {"id":21,"name":"G Center-1"},{"id":22,"name":"G Center-2"},{"id":23,"name":"G Center-3"},
                        {"id":24,"name":"G South-1"},{"id":25,"name":"G South-2"},{"id":26,"name":"G South-3"}]}
           ]
-
+          
           groups_raw = os.environ.get("COURT_GROUPS", "[]")
           groups = json.loads(groups_raw) if groups_raw else []
-
+          
           def fetch_slots(date_str, stadium_id, loc_id):
             try:
               body = json.dumps({"date":date_str,"stadiumId":str(stadium_id),"locId":loc_id}).encode()
@@ -43,17 +43,17 @@ jobs:
                 return json.loads(r.read())
             except:
               return []
-
+          
           def send_telegram(msg):
             body = json.dumps({"chat_id":CHAT_ID,"text":msg,"parse_mode":"HTML"}).encode()
             req = urllib.request.Request(
               f"https://api.telegram.org/bot{TOKEN}/sendMessage",
               data=body, headers={"Content-Type":"application/json"}, method="POST")
             urllib.request.urlopen(req, timeout=10)
-
+          
           today = datetime.date.today()
           day_names = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"]
-
+          
           for g in groups:
             if not g.get("active", True):
               continue
@@ -61,7 +61,7 @@ jobs:
             target_times = g.get("times", [])
             group_name = g.get("name", "Group")
             alerts = []
-
+          
             for i in range(15):
               d = today + datetime.timedelta(days=i)
               dow = (d.weekday() + 1) % 7
@@ -83,7 +83,7 @@ jobs:
               if found:
                 day_th = day_names[dow]
                 alerts.append(f'📅 <b>{day_th} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
-
+          
             if alerts:
               msg = f'🎾 <b>{group_name} — พบคอร์ทว่าง!</b>\n\n' + '\n\n'.join(alerts)
               msg += '\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>'
@@ -92,3 +92,18 @@ jobs:
             else:
               print(f"No courts available for {group_name}")
           EOF
+
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Keep alive
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          echo "Last run: $(date)" > .last_run
+          git add .last_run
+          git commit -m "keepalive" || echo "Nothing to commit"
+          git push
