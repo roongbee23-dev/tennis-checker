@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎾 Crystal Sports Court Checker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080e1a; color: #dde8f0; font-family: 'Sarabun','Segoe UI',sans-serif; min-height: 100vh; }
+
+  /* AUTH */
+  .auth-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .auth-card { background: #0f1923; border: 1px solid #1a2840; border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 420px; }
+  .auth-logo { text-align: center; margin-bottom: 24px; }
+  .auth-logo span { font-size: 48px; }
+  .auth-logo h1 { font-size: 22px; font-weight: 700; color: #2dd4bf; margin-top: 8px; }
+  .auth-logo p { font-size: 13px; color: #4b6280; margin-top: 4px; }
+  .auth-tabs { display: flex; gap: 0; margin-bottom: 24px; background: #050d18; border-radius: 8px; padding: 4px; }
+  .auth-tab { flex: 1; padding: 9px; text-align: center; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 6px; color: #4b6280; border: none; background: none; font-family: inherit; transition: all 0.2s; }
+  .auth-tab.active { background: #1a2840; color: #dde8f0; }
+  .auth-input { width: 100%; background: #050d18; border: 1px solid #1a2840; border-radius: 9px; padding: 12px 16px; color: #dde8f0; font-size: 14px; font-family: inherit; margin-bottom: 12px; outline: none; transition: border 0.2s; }
+  .auth-input:focus { border-color: #2dd4bf; }
+  .auth-btn { width: 100%; background: linear-gradient(135deg,#2dd4bf,#0891b2); color: #fff; border: none; border-radius: 9px; padding: 13px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; margin-bottom: 12px; transition: opacity 0.2s; }
+  .auth-btn:hover { opacity: 0.9; }
+  .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .auth-divider { text-align: center; color: #334155; font-size: 13px; margin: 4px 0 12px; position: relative; }
+  .auth-divider::before, .auth-divider::after { content: ''; position: absolute; top: 50%; width: 42%; height: 1px; background: #1a2840; }
+  .auth-divider::before { left: 0; }
+  .auth-divider::after { right: 0; }
+  .google-btn { width: 100%; background: #fff; color: #333; border: none; border-radius: 9px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 10px; transition: opacity 0.2s; }
+  .google-btn:hover { opacity: 0.9; }
+  .auth-msg { font-size: 13px; text-align: center; margin-top: 10px; min-height: 20px; }
+  .auth-msg.error { color: #f87171; }
+  .auth-msg.success { color: #4ade80; }
+
+  /* APP */
+  .app-page { display: none; }
+  header { background: linear-gradient(135deg,#0c2040,#081628); border-bottom: 2px solid #2dd4bf; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-left h1 { font-size: 17px; font-weight: 700; color: #2dd4bf; }
+  .header-left p { font-size: 11px; color: #4b6280; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .user-email { font-size: 12px; color: #7a99b8; }
+  .logout-btn { background: #1a2840; color: #f87171; border: 1px solid #5f1a1a; border-radius: 7px; padding: 7px 14px; font-size: 12px; cursor: pointer; font-family: inherit; }
+
+  .main { padding: 20px 24px; max-width: 960px; margin: 0 auto; }
+
+  /* Settings */
+  .settings-card { background: #0f1923; border: 1px solid #1a2840; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  .settings-card h3 { font-size: 13px; color: #7a99b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .tg-input-row { display: flex; gap: 8px; align-items: center; }
+  .tg-input { flex: 1; background: #050d18; border: 1px solid #1a2840; border-radius: 8px; padding: 9px 14px; color: #dde8f0; font-size: 13px; font-family: inherit; outline: none; }
+  .tg-input:focus { border-color: #2dd4bf; }
+  .tg-save-btn { background: #0f2b1f; color: #4ade80; border: 1px solid #166534; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+
+  /* Groups */
+  .groups-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .groups-header h3 { font-size: 13px; color: #7a99b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .add-group-btn { background: linear-gradient(135deg,#2dd4bf,#0891b2); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .group-card { background: #0f1923; border: 1px solid #1a2840; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .group-card.disabled { opacity: 0.45; }
+  .group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .group-name { font-size: 14px; font-weight: 700; color: #2dd4bf; }
+  .group-actions { display: flex; gap: 8px; }
+  .group-toggle { background: none; border: 1px solid #334155; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .group-toggle.on { background: #052e16; border-color: #22c55e; color: #4ade80; }
+  .group-toggle.off { background: #1c0e0e; border-color: #7f1d1d; color: #f87171; }
+  .group-delete { background: none; border: 1px solid #5f1a1a; border-radius: 6px; padding: 4px 10px; font-size: 12px; color: #f87171; cursor: pointer; font-family: inherit; }
+  .group-row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .group-section { flex: 1; min-width: 180px; }
+  .group-section label { font-size: 11px; color: #4b6280; display: block; margin-bottom: 6px; }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #1a2840; background: #080e1a; color: #4b6280; user-select: none; transition: all 0.15s; }
+  .chip.active { background: #0e3a2f; border-color: #22c55e; color: #4ade80; }
+  .chip.time.active { background: #0c2a4a; border-color: #38bdf8; color: #7dd3fc; }
+
+  .save-groups-btn { background: linear-gradient(135deg,#7c3aed,#4f46e5); color: #fff; border: none; border-radius: 9px; padding: 11px 24px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  #saveGroupStatus { font-size: 13px; margin-left: 10px; }
+
+  /* Controls */
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .btn { border: none; border-radius: 9px; padding: 11px 22px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .btn-check { background: linear-gradient(135deg,#2dd4bf,#0891b2); color: #fff; }
+  .btn-check:disabled { background: #1a2840; color: #4b6280; cursor: not-allowed; }
+  #btnAuto { background: #0f1923; color: #7a99b8; border: 1px solid #1a2840; }
+  #btnAuto.on { background: linear-gradient(135deg,#6d28d9,#4338ca); color: #fff; border-color: #6d28d9; }
+  .btn-test { background: #0f2b1f; color: #4ade80; border: 1px solid #166534; font-size: 13px; }
+  #lastCheck { font-size: 12px; color: #4b6280; }
+
+  .tg-info { background: #0a1f14; border: 1px solid #14532d; border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #86efac; }
+  .tg-warn { background: #1c0e0e; border: 1px solid #7f1d1d; border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #f87171; }
+
+  .alert-box { background: #032012; border: 1px solid #22c55e; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; }
+  .alert-box h2 { color: #4ade80; font-size: 15px; margin-bottom: 8px; }
+  .alert-line { color: #bbf7d0; font-size: 13px; padding-left: 10px; margin-top: 2px; }
+  .alert-label { color: #86efac; font-weight: 700; margin-top: 6px; }
+  .book-btn { display: inline-block; margin-top: 10px; background: #22c55e; color: #fff; padding: 8px 18px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 13px; }
+
+  .results-group-title { font-size: 13px; font-weight: 700; color: #7a99b8; margin-bottom: 8px; padding: 6px 12px; background: #0a1220; border-radius: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px,1fr)); gap: 10px; margin-bottom: 14px; }
+  .card { background: #0f1923; border: 1px solid #1a2840; border-radius: 12px; padding: 14px 16px; }
+  .card.checking { background: #0a1e35; border-color: #38bdf8; }
+  .card.found { background: #032012; border-color: #22c55e; }
+  .card.notfound { background: #150808; border-color: #5f1a1a; }
+  .card.notopen { opacity: 0.4; }
+  .card-title { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+  .card-date { font-size: 11px; color: #4b6280; margin-bottom: 8px; }
+  .loc-title { font-size: 11px; font-weight: 600; margin-bottom: 3px; margin-top: 5px; }
+  .slot-row { display: flex; justify-content: space-between; background: #050d18; border-radius: 5px; padding: 4px 8px; margin-bottom: 2px; font-size: 11px; }
+  .slot-time { color: #4b6280; }
+  .slot-avail { color: #22c55e; font-weight: 600; }
+  .slot-full { color: #e05050; font-weight: 600; }
+  .court-names { font-size: 10px; color: #4ade80; margin-top: 2px; line-height: 1.5; }
+  .pending { color: #253040; font-size: 12px; }
+
+  .log-box { background: #0f1923; border: 1px solid #1a2840; border-radius: 10px; padding: 12px 16px; margin-top: 16px; }
+
+  /* PENDING PAGE */
+  .pending-page { display: none; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .pending-card { background: #0f1923; border: 1px solid #1a2840; border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 480px; text-align: center; }
+  .pending-icon { font-size: 56px; margin-bottom: 16px; }
+  .pending-card h2 { font-size: 20px; font-weight: 700; color: #f59e0b; margin-bottom: 12px; }
+  .pending-card p { font-size: 14px; color: #7a99b8; line-height: 1.7; margin-bottom: 16px; }
+  .pending-steps { background: #050d18; border-radius: 10px; padding: 16px 20px; text-align: left; margin-bottom: 20px; }
+  .pending-steps h3 { font-size: 13px; color: #7a99b8; margin-bottom: 10px; }
+  .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; font-size: 13px; color: #94a3b8; }
+  .step-num { background: #1a2840; color: #2dd4bf; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .line-btn { display: inline-block; background: #00B900; color: #fff; border: none; border-radius: 9px; padding: 12px 28px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; text-decoration: none; margin-bottom: 12px; }
+  .pending-logout { background: none; border: 1px solid #334155; border-radius: 8px; padding: 9px 20px; font-size: 13px; color: #64748b; cursor: pointer; font-family: inherit; }
+
+  /* OVERLAY สำหรับ user ที่ยังไม่ approved */
+  .locked-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(8,14,26,0.85); z-index: 100; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .locked-card { background: #0f1923; border: 1px solid #f59e0b; border-radius: 16px; padding: 32px; max-width: 420px; text-align: center; }
+  .locked-card h2 { color: #f59e0b; font-size: 18px; margin-bottom: 10px; }
+  .locked-card p { color: #7a99b8; font-size: 13px; line-height: 1.7; }
+  .log-title { color: #4b6280; font-size: 12px; margin-bottom: 6px; }
+  .log-inner { max-height: 120px; overflow-y: auto; }
+  .log-line { font-size: 11px; color: #374860; margin-bottom: 1px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<!-- LOCKED BANNER -->
+<div id="lockedBanner" style="display:none;background:linear-gradient(135deg,#1c1000,#1a0e00);border:1px solid #f59e0b;border-radius:12px;padding:14px 20px;margin:0 24px 16px;display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:24px">🔒</span>
+    <div>
+      <div style="font-weight:700;color:#f59e0b;font-size:14px;">คุณกำลังดูตัวอย่าง — ยังไม่ได้เป็นสมาชิก</div>
+      <div style="font-size:12px;color:#78716c;margin-top:2px;">สมัครสมาชิกเพื่อใช้งานการแจ้งเตือนคอร์ทว่างได้เลย</div>
+    </div>
+  </div>
+  <button onclick="showSubscribePopup()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;border-radius:9px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;">🎾 สมัครสมาชิก</button>
+</div>
+
+<!-- SUBSCRIBE POPUP -->
+<div id="subscribePopup" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#0f1923;border:1px solid #f59e0b;border-radius:16px;padding:32px;max-width:420px;width:100%;text-align:center;">
+    <div style="font-size:48px;margin-bottom:12px;">🎾</div>
+    <h2 style="color:#f59e0b;font-size:20px;margin-bottom:10px;">สมัครสมาชิก</h2>
+    <p style="color:#7a99b8;font-size:13px;line-height:1.8;margin-bottom:16px;">
+      รับการแจ้งเตือนคอร์ทว่าง Crystal Sports อัตโนมัติ<br>
+      ผ่าน Telegram ทุก 30 นาที
+    </p>
+    <div style="background:#050d18;border-radius:10px;padding:16px;text-align:left;margin-bottom:20px;font-size:13px;color:#94a3b8;line-height:1.8;">
+      <div>1️⃣ กดปุ่ม Line ด้านล่าง</div>
+      <div>2️⃣ แจ้งชื่อ + อีเมล + แนบสลิปโอนเงิน</div>
+      <div>3️⃣ Admin อนุมัติ → ใช้งานได้ทันที ✅</div>
+    </div>
+    <a href="https://line.me/ti/p/~YOUR_LINE_ID" target="_blank" style="display:block;background:#00B900;color:#fff;border-radius:9px;padding:13px;font-size:15px;font-weight:700;text-decoration:none;margin-bottom:10px;">💬 แจ้ง Admin ทาง Line</a>
+    <button onclick="hideSubscribePopup()" style="background:none;border:1px solid #334155;border-radius:8px;padding:9px 20px;font-size:13px;color:#64748b;cursor:pointer;font-family:inherit;">ปิด</button>
+  </div>
+</div>
+
+<!-- AUTH PAGE -->
+<div class="auth-page" id="authPage">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span>🎾</span>
+      <h1>Crystal Sports Court Checker</h1>
+      <p>เข้าสู่ระบบเพื่อจัดการการแจ้งเตือนของคุณ</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin" onclick="switchTab('login')">เข้าสู่ระบบ</button>
+      <button class="auth-tab" id="tabRegister" onclick="switchTab('register')">สมัครสมาชิก</button>
+    </div>
+
+    <div id="formLogin">
+      <input class="auth-input" id="loginEmail" type="email" placeholder="อีเมล">
+      <input class="auth-input" id="loginPassword" type="password" placeholder="รหัสผ่าน">
+      <button class="auth-btn" onclick="loginEmail()">เข้าสู่ระบบ</button>
+      <div class="auth-divider">หรือ</div>
+      <button class="google-btn" onclick="loginGoogle()">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        เข้าสู่ระบบด้วย Google
+      </button>
+      <div class="auth-msg" id="loginMsg"></div>
+    </div>
+
+    <div id="formRegister" style="display:none">
+      <input class="auth-input" id="regEmail" type="email" placeholder="อีเมล">
+      <input class="auth-input" id="regPassword" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)">
+      <button class="auth-btn" onclick="registerEmail()">สมัครสมาชิก</button>
+      <div class="auth-divider">หรือ</div>
+      <button class="google-btn" onclick="loginGoogle()">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        สมัครด้วย Google
+      </button>
+      <div class="auth-msg" id="regMsg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP PAGE -->
+<div class="app-page" id="appPage">
+  <header>
+    <div class="header-left">
+      <span style="font-size:28px">🎾</span>
+      <div>
+        <h1>Crystal Sports Court Checker</h1>
+        <p>แจ้งเตือนผ่าน Telegram · หลาย Group</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="user-email" id="userEmail"></span>
+      <button class="logout-btn" onclick="logout()">ออกจากระบบ</button>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- Telegram Setting -->
+    <div class="settings-card">
+      <h3>📲 Telegram Chat ID ของคุณ</h3>
+      <div class="tg-input-row">
+        <input class="tg-input" id="tgChatId" placeholder="เช่น 839952182 — เปิด Telegram แล้วส่งข้อความหา @userinfobot">
+        <button class="tg-save-btn" onclick="saveTelegramId()">💾 บันทึก</button>
+        <button class="tg-save-btn" onclick="testTelegram()" style="background:#0c2a4a;border-color:#1e3a5f;color:#7dd3fc;">📨 ทดสอบ</button>
+      </div>
+      <div style="font-size:11px;color:#4b6280;margin-top:6px;">หา Chat ID: เปิด Telegram → ค้นหา @userinfobot → กด Start → จะได้ตัวเลข ID</div>
+      <div id="tgSaveMsg" style="font-size:13px;margin-top:6px;"></div>
+    </div>
+
+    <!-- Groups -->
+    <div class="settings-card">
+      <div class="groups-header">
+        <h3>⚙️ กลุ่มการแจ้งเตือน</h3>
+        <button class="add-group-btn" onclick="addGroup()">+ เพิ่ม Group</button>
+      </div>
+      <div id="groupsContainer"></div>
+      <div style="display:flex;align-items:center;margin-top:12px;">
+        <button class="save-groups-btn" onclick="saveGroups()">💾 บันทึก Groups</button>
+        <span id="saveGroupStatus"></span>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="btn btn-check" id="btnCheck" onclick="checkAll()">🔍 ตรวจสอบเลย</button>
+      <button class="btn" id="btnAuto" onclick="toggleAuto()">⏰ Auto (ทุก 30 นาที)</button>
+      <button class="btn btn-test" onclick="testTelegram()">📲 ทดสอบ Telegram</button>
+      <span id="lastCheck"></span>
+    </div>
+
+    <div id="tgInfoBar"></div>
+    <div id="alertsContainer"></div>
+    <div id="resultsContainer"></div>
+
+    <div class="log-box" id="logBox" style="display:none">
+      <div class="log-title">📋 Log</div>
+      <div class="log-inner" id="logInner"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ SUPABASE ============
+const SUPABASE_URL = 'https://szckhdejflscildnuthy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g6lcfzaErpOO-vliN0VB8w_GyGdpM-h';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const PROXY_URL = "https://crystal-proxy.tennischecker.workers.dev";
+const BOT_TOKEN = "8979299516:AAEwY_fKOaflP-Y3o-DnJqKrzCViLJvel-c";
+const DAY_NAMES = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"];
+const ALL_DAYS = [{v:1,l:"จันทร์"},{v:2,l:"อังคาร"},{v:3,l:"พุธ"},{v:4,l:"พฤหัส"},{v:5,l:"ศุกร์"},{v:6,l:"เสาร์"},{v:0,l:"อาทิตย์"}];
+const ALL_TIMES = ["06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
+const LOCATIONS = [
+  { locId:"LOC001", locName:"Crystal Sports", courts:[{id:1,name:"North-1"},{id:2,name:"North-2"},{id:3,name:"North-3"},{id:4,name:"Center-1"},{id:5,name:"Center-2"},{id:6,name:"South-1"},{id:7,name:"South-2"},{id:8,name:"South-3"}] },
+  { locId:"LOC002", locName:"Crystal Sports G", courts:[{id:18,name:"G North-1"},{id:19,name:"G North-2"},{id:20,name:"G North-3"},{id:21,name:"G Center-1"},{id:22,name:"G Center-2"},{id:23,name:"G Center-3"},{id:24,name:"G South-1"},{id:25,name:"G South-2"},{id:26,name:"G South-3"}] },
+];
+
+let currentUser = null;
+let userSettings = null;
+let groups = [];
+let groupResults = {};
+let autoTimer = null, cdTimer = null, autoOn = false;
+const INTERVAL = 30 * 60 * 1000;
+
+// ============ AUTH ============
+function switchTab(tab) {
+  document.getElementById('tabLogin').classList.toggle('active', tab==='login');
+  document.getElementById('tabRegister').classList.toggle('active', tab==='register');
+  document.getElementById('formLogin').style.display = tab==='login'?'block':'none';
+  document.getElementById('formRegister').style.display = tab==='register'?'block':'none';
+}
+
+async function loginEmail() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const msg = document.getElementById('loginMsg');
+  msg.className = 'auth-msg'; msg.textContent = 'กำลังเข้าสู่ระบบ...';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { msg.className = 'auth-msg error'; msg.textContent = error.message; }
+  else { msg.className = 'auth-msg success'; msg.textContent = 'เข้าสู่ระบบสำเร็จ!'; }
+}
+
+async function registerEmail() {
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const msg = document.getElementById('regMsg');
+  msg.className = 'auth-msg'; msg.textContent = 'กำลังสมัคร...';
+  const { error } = await sb.auth.signUp({ email, password });
+  if (error) { msg.className = 'auth-msg error'; msg.textContent = error.message; }
+  else { msg.className = 'auth-msg success'; msg.textContent = 'สมัครสำเร็จ! กรุณายืนยันอีเมลก่อน login'; }
+}
+
+async function loginGoogle() {
+  await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.href }
+  });
+}
+
+async function logout() {
+  await sb.auth.signOut();
+  showAuth();
+}
+
+function showAuth() {
+  document.getElementById('authPage').style.display = 'flex';
+  document.getElementById('pendingPage').style.display = 'none';
+  document.getElementById('appPage').style.display = 'none';
+  currentUser = null; userSettings = null;
+}
+
+async function showApp(user) {
+  currentUser = user;
+  document.getElementById('authPage').style.display = 'none';
+  document.getElementById('pendingPage').style.display = 'none';
+  document.getElementById('appPage').style.display = 'block';
+  document.getElementById('userEmail').textContent = user.email;
+  await loadUserSettings();
+  // เช็ค is_approved แล้วแสดง banner
+  const { data } = await sb.from('user_settings').select('is_approved').eq('id', user.id).single();
+  if (!data || !data.is_approved) {
+    showLockedBanner();
+  } else {
+    hideLockedBanner();
+  }
+}
+
+function showLockedBanner() {
+  document.getElementById('lockedBanner').style.display = 'flex';
+  // disable ปุ่มทุกอย่าง
+  document.getElementById('btnCheck').disabled = true;
+  document.getElementById('btnAuto').disabled = true;
+  document.querySelectorAll('.save-groups-btn, .tg-save-btn, .add-group-btn, .group-delete, .group-toggle').forEach(el => el.disabled = true);
+}
+
+function hideLockedBanner() {
+  document.getElementById('lockedBanner').style.display = 'none';
+}
+
+function showSubscribePopup() {
+  document.getElementById('subscribePopup').style.display = 'flex';
+}
+
+function hideSubscribePopup() {
+  document.getElementById('subscribePopup').style.display = 'none';
+}
+
+// ============ USER SETTINGS ============
+async function loadUserSettings() {
+  const { data, error } = await sb.from('user_settings').select('*').eq('id', currentUser.id).single();
+  if (data) {
+    userSettings = data;
+    document.getElementById('tgChatId').value = data.telegram_chat_id || '';
+    groups = data.court_groups || defaultGroups();
+  } else {
+    groups = defaultGroups();
+  }
+  renderGroups();
+  renderResults();
+  updateTgInfoBar();
+}
+
+async function saveTelegramId() {
+  const chatId = document.getElementById('tgChatId').value.trim();
+  const msg = document.getElementById('tgSaveMsg');
+  msg.style.color = '#7a99b8'; msg.textContent = 'กำลังบันทึก...';
+  const { error } = await sb.from('user_settings').upsert({ id: currentUser.id, telegram_chat_id: chatId, email: currentUser.email });
+  if (error) { msg.style.color='#f87171'; msg.textContent='❌ '+error.message; }
+  else { msg.style.color='#4ade80'; msg.textContent='✅ บันทึกแล้ว'; if(userSettings) userSettings.telegram_chat_id = chatId; updateTgInfoBar(); }
+  setTimeout(()=>msg.textContent='', 3000);
+}
+
+async function saveGroups() {
+  const el = document.getElementById('saveGroupStatus');
+  el.style.color='#7a99b8'; el.textContent='กำลังบันทึก...';
+  const { error } = await sb.from('user_settings').upsert({ id: currentUser.id, court_groups: groups, email: currentUser.email });
+  if (error) { el.style.color='#f87171'; el.textContent='❌ '+error.message; }
+  else { el.style.color='#4ade80'; el.textContent='✅ บันทึกแล้ว'; }
+  setTimeout(()=>el.textContent='', 3000);
+}
+
+function updateTgInfoBar() {
+  const bar = document.getElementById('tgInfoBar');
+  const chatId = document.getElementById('tgChatId').value.trim();
+  if (chatId) {
+    bar.innerHTML = `<div class="tg-info">📲 Telegram Chat ID: ${chatId} · GitHub Actions จะแจ้งเตือนทุก 30 นาทีอัตโนมัติ</div>`;
+  } else {
+    bar.innerHTML = `<div class="tg-warn">⚠️ กรุณาใส่ Telegram Chat ID ก่อน เพื่อรับการแจ้งเตือน</div>`;
+  }
+}
+
+// ============ TELEGRAM ============
+async function sendTelegram(message) {
+  const chatId = document.getElementById('tgChatId').value.trim();
+  if (!chatId) return { ok: false, description: 'ไม่มี Chat ID' };
+  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({chat_id: chatId, text: message, parse_mode:'HTML'})
+  });
+  return await res.json();
+}
+
+async function testTelegram() {
+  const d = await sendTelegram('🎾 <b>Crystal Sports Court Checker</b>\n\nการแจ้งเตือนพร้อมใช้งาน! ✅\nบัญชี: '+currentUser.email);
+  alert(d.ok ? '✅ ส่งสำเร็จ! เช็ค Telegram ได้เลย' : '❌ Error: '+d.description);
+}
+
+// ============ GROUPS ============
+function defaultGroups() {
+  return [{ id: Date.now(), name: 'Group 1', days: [2,3,4,5], times: ['18:00','19:00'], active: true }];
+}
+function addGroup() {
+  groups.push({ id: Date.now(), name: `Group ${groups.length+1}`, days: [2,3,4,5], times: ['18:00','19:00'], active: true });
+  renderGroups();
+}
+function deleteGroup(id) {
+  if (groups.length <= 1) return;
+  groups = groups.filter(g => g.id !== id);
+  delete groupResults[id];
+  renderGroups(); renderResults();
+}
+function toggleGroup(id) {
+  const g = groups.find(g => g.id === id);
+  if (g) { g.active = !g.active; renderGroups(); }
+}
+function toggleDay(gId, day) {
+  const g = groups.find(g => g.id === gId);
+  if (!g) return;
+  g.days = g.days.includes(day) ? g.days.filter(d=>d!==day) : [...g.days, day];
+  renderGroups();
+}
+function toggleTime(gId, time) {
+  const g = groups.find(g => g.id === gId);
+  if (!g) return;
+  g.times = g.times.includes(time) ? g.times.filter(t=>t!==time) : [...g.times, time];
+  renderGroups();
+}
+
+function renderGroups() {
+  const c = document.getElementById('groupsContainer');
+  c.innerHTML = '';
+  groups.forEach(g => {
+    const div = document.createElement('div');
+    div.className = 'group-card'+(g.active?'':' disabled');
+    div.innerHTML = `
+      <div class="group-header">
+        <span class="group-name">🎾 ${g.name}</span>
+        <div class="group-actions">
+          <button class="group-toggle ${g.active?'on':'off'}" onclick="toggleGroup(${g.id})">${g.active?'✅ เปิด':'❌ ปิด'}</button>
+          <button class="group-delete" onclick="deleteGroup(${g.id})">🗑 ลบ</button>
+        </div>
+      </div>
+      <div class="group-row">
+        <div class="group-section">
+          <label>วัน</label>
+          <div class="chip-group">${ALL_DAYS.map(d=>`<div class="chip${g.days.includes(d.v)?' active':''}" onclick="toggleDay(${g.id},${d.v})">${d.l}</div>`).join('')}</div>
+        </div>
+        <div class="group-section">
+          <label>เวลา</label>
+          <div class="chip-group">${ALL_TIMES.map(t=>`<div class="chip time${g.times.includes(t)?' active':''}" onclick="toggleTime(${g.id},'${t}')">${t}</div>`).join('')}</div>
+        </div>
+      </div>`;
+    c.appendChild(div);
+  });
+}
+
+// ============ API ============
+async function fetchSlots(dateStr, stadiumId, locId) {
+  try {
+    const r = await fetch(PROXY_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({date:dateStr, stadiumId:String(stadiumId), locId}) });
+    const data = await r.json();
+    return Array.isArray(data) ? data : [];
+  } catch { return []; }
+}
+
+async function checkDate(dateStr, times) {
+  const result = {};
+  let total=0, allOne=true;
+  for (const loc of LOCATIONS) {
+    result[loc.locId] = {};
+    times.forEach(t => result[loc.locId][t] = []);
+    for (const court of loc.courts) {
+      const slots = await fetchSlots(dateStr, court.id, loc.locId);
+      for (const s of slots) {
+        total++;
+        if (String(s.reservestatus)!=='1') allOne=false;
+        if (String(s.reservestatus)==='0' && times.includes(s.timeName)) result[loc.locId][s.timeName].push(court.name);
+      }
+    }
+  }
+  if (total>0 && allOne) return null;
+  return result;
+}
+
+function getTargetDates(days) {
+  const dates=[], today=new Date();
+  for (let i=0; i<=14; i++) {
+    const d=new Date(today); d.setDate(today.getDate()+i);
+    if (days.includes(d.getDay())) dates.push(d);
+  }
+  return dates;
+}
+function fmt(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtTH(d) { return `${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`; }
+
+function addLog(msg) {
+  const t=new Date().toLocaleTimeString('th-TH');
+  const el=document.getElementById('logInner');
+  const line=document.createElement('div');
+  line.className='log-line'; line.textContent=`[${t}] ${msg}`;
+  el.insertBefore(line, el.firstChild);
+  document.getElementById('logBox').style.display='block';
+}
+
+function renderResults() {
+  const rc=document.getElementById('resultsContainer');
+  const ac=document.getElementById('alertsContainer');
+  rc.innerHTML=''; ac.innerHTML='';
+  for (const g of groups) {
+    if (!g.active) continue;
+    const dates=getTargetDates(g.days);
+    const res=groupResults[g.id]||{};
+    const alerts=[];
+    for (const date of dates) {
+      const key=fmt(date); const r=res[key];
+      if (!r||r===null) continue;
+      const found=[];
+      for (const loc of LOCATIONS) for (const t of g.times) { const courts=r[loc.locId]?.[t]||[]; if(courts.length) found.push(`${loc.locName} ${t} → ${courts.join(', ')}`); }
+      if (found.length) alerts.push({label:fmtTH(date), lines:found});
+    }
+    if (alerts.length) {
+      const alertDiv=document.createElement('div'); alertDiv.className='alert-box';
+      alertDiv.innerHTML=`<h2>🎉 ${g.name} — พบคอร์ทว่าง!</h2>`+alerts.map(a=>`<div class="alert-label">${a.label}</div>${a.lines.map(l=>`<div class="alert-line">• ${l}</div>`).join('')}`).join('')+`<a href="https://crystalsports-booking.kegroup.co.th/booking.php" target="_blank" class="book-btn">📅 จองเลย →</a>`;
+      ac.appendChild(alertDiv);
+    }
+    const section=document.createElement('div');
+    section.innerHTML=`<div class="results-group-title">🎾 ${g.name} <span style="color:#4b6280;font-weight:400">(${g.days.map(d=>DAY_NAMES[d]).join(', ')} · ${g.times.join(', ')})</span></div>`;
+    const grid=document.createElement('div'); grid.className='grid';
+    if (!dates.length||!g.times.length) { grid.innerHTML='<div style="color:#253040;font-size:13px;padding:12px;">⚠️ กรุณาเลือกวันและเวลา</div>'; }
+    else {
+      for (const date of dates) {
+        const key=fmt(date); const r=res[key];
+        const hasAny=r&&r!==null&&LOCATIONS.some(loc=>g.times.some(t=>r[loc.locId]?.[t]?.length>0));
+        const cls=r===null?'card notopen':r?(hasAny?'card found':'card notfound'):'card';
+        const icon=r===null?'🔒':r?(hasAny?'✅':'❌'):'⬜';
+        let inner=`<div class="card-title">${icon} ${fmtTH(date)}</div><div class="card-date">${key}</div>`;
+        if (r===null) inner+=`<div class="pending" style="color:#334155">ยังไม่เปิดให้จอง</div>`;
+        else if (!r) inner+=`<div class="pending">ยังไม่ได้เช็ค</div>`;
+        else { for (const loc of LOCATIONS) { const locHas=g.times.some(t=>r[loc.locId]?.[t]?.length>0); inner+=`<div class="loc-title" style="color:${locHas?'#86efac':'#4b6280'}">${locHas?'✅':'❌'} ${loc.locName}</div>`; for (const t of g.times) { const courts=r[loc.locId]?.[t]||[]; inner+=`<div class="slot-row"><span class="slot-time">${t}</span><span class="${courts.length?'slot-avail':'slot-full'}">${courts.length?courts.length+' court':'เต็ม'}</span></div>`; if(courts.length) inner+=`<div class="court-names">${courts.join(', ')}</div>`; } } }
+        const card=document.createElement('div'); card.className=cls; card.id=`card-${g.id}-${key}`; card.innerHTML=inner;
+        grid.appendChild(card);
+      }
+    }
+    section.appendChild(grid); rc.appendChild(section);
+  }
+}
+
+async function checkAll() {
+  const btn=document.getElementById('btnCheck'); btn.disabled=true;
+  groupResults={};
+  for (const g of groups) {
+    if (!g.active) continue;
+    const dates=getTargetDates(g.days);
+    groupResults[g.id]={}; const alerts=[];
+    addLog(`🔍 เช็ค ${g.name}...`);
+    for (const date of dates) {
+      const key=fmt(date), label=fmtTH(date);
+      const card=document.getElementById(`card-${g.id}-${key}`);
+      if(card){card.className='card checking';card.querySelector('.card-title').textContent='⏳ '+label;}
+      const res=await checkDate(key,g.times);
+      groupResults[g.id][key]=res;
+      if(res===null){addLog(`🔒 ${g.name} ${label}`);renderResults();continue;}
+      const found=[];
+      for(const loc of LOCATIONS) for(const t of g.times){const courts=res[loc.locId]?.[t]||[];if(courts.length) found.push(`${loc.locName} ${t} → ${courts.join(', ')}`);}
+      if(found.length){alerts.push({label,lines:found});addLog(`🎾 ${g.name} พบว่าง ${label}`);}
+      else addLog(`❌ ${g.name} ${label}`);
+      renderResults();
+    }
+    if(alerts.length){
+      const tgLines=alerts.map(a=>`📅 <b>${a.label}</b>\n${a.lines.map(l=>'  • '+l).join('\n')}`).join('\n\n');
+      const msg=`🎾 <b>${g.name} — พบคอร์ทว่าง!</b>\n\n${tgLines}\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>`;
+      try{const d=await sendTelegram(msg);addLog(d.ok?`📲 ${g.name} ส่ง Telegram`:`❌ ${d.description}`);}catch(e){addLog(`❌ ${e.message}`);}
+    }
+  }
+  document.getElementById('lastCheck').textContent='เช็คล่าสุด '+new Date().toLocaleTimeString('th-TH');
+  btn.disabled=false;
+}
+
+function toggleAuto() {
+  const btn=document.getElementById('btnAuto'); autoOn=!autoOn;
+  if(autoOn){
+    btn.classList.add('on'); checkAll();
+    let secs=INTERVAL/1000;
+    const upd=()=>btn.textContent=`🔄 Auto ON · ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
+    upd();
+    autoTimer=setInterval(()=>{checkAll();secs=INTERVAL/1000;},INTERVAL);
+    cdTimer=setInterval(()=>{secs=Math.max(0,secs-1);upd();},1000);
+  }else{
+    btn.classList.remove('on'); btn.textContent='⏰ Auto (ทุก 30 นาที)';
+    clearInterval(autoTimer);clearInterval(cdTimer);
+  }
+}
+
+// ============ INIT ============
+// อ่าน session จาก URL hash (หลัง Google OAuth redirect)
+async function initAuth() {
+  // ถ้า URL มี access_token ให้ Supabase อ่านจาก hash
+  if (window.location.hash.includes('access_token')) {
+    const { data, error } = await sb.auth.getSession();
+    if (data?.session?.user) {
+      // ล้าง hash ออกจาก URL
+      history.replaceState(null, '', window.location.pathname);
+      showApp(data.session.user);
+      return;
+    }
+  }
+  // ปกติให้ใช้ onAuthStateChange
+  const { data } = await sb.auth.getSession();
+  if (data?.session?.user) {
+    showApp(data.session.user);
+  } else {
+    showAuth();
+  }
+}
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session?.user) showApp(session.user);
+  else if (event === 'SIGNED_OUT') showAuth();
+});
+
+initAuth();
+</script>
+</body>
+</html>
