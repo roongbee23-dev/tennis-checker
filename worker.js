@@ -57,15 +57,26 @@ async function handleAce(debug) {
   });
   const html = await res.text();
   if (debug) {
-    return json({
-      status: res.status,
-      htmlLen: html.length,
-      hasBookingsVar: html.includes('blockedEvents'),
-      hasResourcesVar: html.includes('aceResources'),
-      server: res.headers.get('server'),
-      cfRay: res.headers.get('cf-ray'),
-      head: html.slice(0, 400),
-    });
+    // ลองหลายแบบเพื่อหาวิธีที่ได้หน้า booking จริง
+    const candidates = [
+      { name: 'plain-nohdr', url: 'https://aceofclubsbkk.com/booking/', headers: {} },
+      { name: 'ua-only', url: 'https://aceofclubsbkk.com/booking/', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' } },
+      { name: 'noslash', url: 'https://aceofclubsbkk.com/booking', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' } },
+      { name: 'wp-cookie', url: 'https://aceofclubsbkk.com/booking/', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Cookie': 'wordpress_test_cookie=WP%20Cookie%20check' } },
+      { name: 'page-id', url: 'https://aceofclubsbkk.com/?page_id=3194', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' } },
+    ];
+    const results = [];
+    for (const c of candidates) {
+      try {
+        const r = await fetch(c.url, { headers: c.headers, redirect: 'follow' });
+        const h = await r.text();
+        const tm = h.match(/<title>([^<]*)<\/title>/i);
+        results.push({ name: c.name, status: r.status, len: h.length, hasVars: h.includes('blockedEvents'), title: tm ? tm[1].slice(0, 60) : null, finalUrl: r.url });
+      } catch (e) {
+        results.push({ name: c.name, err: String(e).slice(0, 100) });
+      }
+    }
+    return json({ mainStatus: res.status, mainLen: html.length, mainHasVars: html.includes('blockedEvents'), results });
   }
   if (!res.ok) return json({ error: 'fetch_failed', status: res.status }, 502);
 
