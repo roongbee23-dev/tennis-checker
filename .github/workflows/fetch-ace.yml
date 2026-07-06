@@ -1,8 +1,7 @@
+# ปิด schedule ไว้ก่อน — เว็บ Ace of Clubs บล็อก IP datacenter (รันเองได้ผ่าน Run workflow)
 name: fetch-ace
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/30 * * * *"
 permissions:
   contents: write
 jobs:
