@@ -41,21 +41,37 @@ function extractLiteral(html, varName) {
   return null;
 }
 
-async function handleAce() {
+async function handleAce(debug) {
   const res = await fetch('https://aceofclubsbkk.com/booking/', {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
       'Accept-Language': 'th-TH,th;q=0.9,en;q=0.8',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Referer': 'https://aceofclubsbkk.com/',
     },
-    cf: { cacheTtl: 120, cacheEverything: true },
   });
-  if (!res.ok) return json({ error: 'fetch_failed', status: res.status }, 502);
   const html = await res.text();
+  if (debug) {
+    return json({
+      status: res.status,
+      htmlLen: html.length,
+      hasBookingsVar: html.includes('blockedEvents'),
+      hasResourcesVar: html.includes('aceResources'),
+      server: res.headers.get('server'),
+      cfRay: res.headers.get('cf-ray'),
+      head: html.slice(0, 400),
+    });
+  }
+  if (!res.ok) return json({ error: 'fetch_failed', status: res.status }, 502);
 
   const rawBookings = extractLiteral(html, 'blockedEvents');
   const rawResources = extractLiteral(html, 'aceResources');
-  if (!rawBookings || !rawResources) return json({ error: 'parse_failed' }, 502);
+  if (!rawBookings || !rawResources) return json({ error: 'parse_failed', htmlLen: html.length, status: res.status }, 502);
 
   let bookings, resources;
   try {
@@ -94,7 +110,9 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (url.pathname === '/api/ace') {
       if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
-      return handleAce();
+      let body = {};
+      try { body = await request.json(); } catch {}
+      return handleAce(!!body.debug);
     }
     return serveHtml();
   },
