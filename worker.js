@@ -57,26 +57,31 @@ async function handleAce(debug) {
   });
   const html = await res.text();
   if (debug) {
-    // ลองหลายแบบเพื่อหาวิธีที่ได้หน้า booking จริง
-    const candidates = [
-      { name: 'plain-nohdr', url: 'https://aceofclubsbkk.com/booking/', headers: {} },
-      { name: 'ua-only', url: 'https://aceofclubsbkk.com/booking/', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' } },
-      { name: 'noslash', url: 'https://aceofclubsbkk.com/booking', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' } },
-      { name: 'wp-cookie', url: 'https://aceofclubsbkk.com/booking/', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', 'Cookie': 'wordpress_test_cookie=WP%20Cookie%20check' } },
-      { name: 'page-id', url: 'https://aceofclubsbkk.com/?page_id=3194', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' } },
-    ];
-    const results = [];
-    for (const c of candidates) {
-      try {
-        const r = await fetch(c.url, { headers: c.headers, redirect: 'follow' });
-        const h = await r.text();
-        const tm = h.match(/<title>([^<]*)<\/title>/i);
-        results.push({ name: c.name, status: r.status, len: h.length, hasVars: h.includes('blockedEvents'), title: tm ? tm[1].slice(0, 60) : null, finalUrl: r.url });
-      } catch (e) {
-        results.push({ name: c.name, err: String(e).slice(0, 100) });
-      }
+    const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+    const out = {};
+    // 1) ดู redirect ตรงๆ
+    const r1 = await fetch('https://aceofclubsbkk.com/booking/', { headers: { 'User-Agent': UA }, redirect: 'manual' });
+    out.direct = { status: r1.status, location: r1.headers.get('location') };
+    // 2) เก็บ cookie จากหน้าแรกก่อน แล้วค่อยเรียก booking
+    const r2 = await fetch('https://aceofclubsbkk.com/', { headers: { 'User-Agent': UA } });
+    let cookies = [];
+    if (r2.headers.getSetCookie) cookies = r2.headers.getSetCookie().map(c => c.split(';')[0]);
+    else if (r2.headers.get('set-cookie')) cookies = [r2.headers.get('set-cookie').split(';')[0]];
+    await r2.text();
+    out.homeCookies = cookies;
+    const r3 = await fetch('https://aceofclubsbkk.com/booking/', {
+      headers: { 'User-Agent': UA, 'Cookie': cookies.join('; '), 'Referer': 'https://aceofclubsbkk.com/' },
+      redirect: 'manual',
+    });
+    out.withCookie = { status: r3.status, location: r3.headers.get('location') };
+    if (r3.status === 200) {
+      const h3 = await r3.text();
+      const tm = h3.match(/<title>([^<]*)<\/title>/i);
+      out.withCookie.len = h3.length;
+      out.withCookie.hasVars = h3.includes('blockedEvents');
+      out.withCookie.title = tm ? tm[1].slice(0, 60) : null;
     }
-    return json({ mainStatus: res.status, mainLen: html.length, mainHasVars: html.includes('blockedEvents'), results });
+    return json(out);
   }
   if (!res.ok) return json({ error: 'fetch_failed', status: res.status }, 502);
 
