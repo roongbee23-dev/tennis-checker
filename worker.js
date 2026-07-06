@@ -41,6 +41,16 @@ function extractLiteral(html, varName) {
   return null;
 }
 
+// อ่านข้อมูลที่ GitHub Actions ดึงไว้ (data/ace.json อัปเดตทุก 30 นาที)
+async function handleAceFromRepo() {
+  const r = await fetch('https://raw.githubusercontent.com/roongbee23-dev/tennis-checker/main/data/ace.json', {
+    cf: { cacheTtl: 60, cacheEverything: true },
+  });
+  if (!r.ok) return json({ error: 'no_data', status: r.status }, 502);
+  const data = await r.json();
+  return json(data);
+}
+
 async function handleAce(debug) {
   const res = await fetch('https://aceofclubsbkk.com/booking/', {
     headers: {
@@ -128,7 +138,8 @@ export default {
       if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
       let body = {};
       try { body = await request.json(); } catch {}
-      return handleAce(!!body.debug);
+      if (body.debug) return handleAce(true);
+      return handleAceFromRepo();
     }
     return serveHtml();
   },
