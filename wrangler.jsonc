@@ -1,0 +1,6 @@
+{
+  // Cloudflare Workers Builds config — deploy อัตโนมัติเมื่อ push ขึ้น GitHub
+  "name": "app",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-01"
+}

@@ -207,6 +207,33 @@
   .avail-names { font-size: 10px; color: #4ade80; padding: 2px 8px 6px; }
   .avail-loading { font-size: 12px; color: #4b6280; text-align: center; padding: 8px; }
   .no-results { text-align: center; padding: 40px 20px; color: #4b6280; font-size: 14px; }
+
+  /* one-shot search */
+  .sh-label { font-size: 12px; color: #7a99b8; font-weight: 700; margin: 14px 0 7px; }
+  .mode-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+  .mode-btn { flex: 1; padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 8px; color: #4b6280; border: 1px solid #1a2840; background: #050d18; font-family: inherit; }
+  .mode-btn.active { background: #0c2a4a; border-color: #38bdf8; color: #7dd3fc; }
+  .mini-select { background: #050d18; border: 1px solid #1a2840; border-radius: 6px; padding: 4px 8px; color: #7dd3fc; font-size: 11px; font-family: inherit; outline: none; }
+  .date-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid #38bdf8; background: #0c2a4a; color: #7dd3fc; display: inline-flex; align-items: center; gap: 6px; }
+  .date-chip span { cursor: pointer; color: #f87171; font-weight: 800; }
+  .venue-card { background: #050d18; border: 1px solid #1a2840; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+  .venue-card.off { opacity: 0.45; }
+  .venue-head { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .venue-check { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #334155; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; flex-shrink: 0; }
+  .venue-card.on .venue-check { background: #0891b2; border-color: #2dd4bf; }
+  .venue-name { font-size: 14px; font-weight: 700; color: #dde8f0; }
+  .venue-sub { font-size: 11px; color: #4b6280; }
+  .venue-courts { margin-top: 10px; }
+  .day-result { background: #0f1923; border: 1px solid #1a2840; border-radius: 14px; padding: 16px 18px; margin-bottom: 12px; }
+  .day-result.has-free { border-color: #22c55e55; }
+  .dr-date { font-size: 15px; font-weight: 800; color: #dde8f0; margin-bottom: 10px; }
+  .dr-venue { margin-bottom: 10px; padding: 10px 12px; background: #050d18; border-radius: 10px; }
+  .dr-venue-name { font-size: 13px; font-weight: 700; color: #7dd3fc; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dr-slot { display: flex; justify-content: space-between; gap: 10px; padding: 5px 8px; border-radius: 6px; margin-bottom: 2px; font-size: 12px; background: #0a1220; flex-wrap: wrap; }
+  .dir-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid #12203a; flex-wrap: wrap; }
+  .dir-item:last-child { border-bottom: none; }
+  .summary-bar { background: #032012; border: 1px solid #22c55e; border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; font-size: 14px; font-weight: 700; color: #4ade80; }
+  .summary-bar.none { background: #150808; border-color: #5f1a1a; color: #f87171; }
 </style>
 </head>
 <body>
@@ -330,47 +357,55 @@
       <button class="view-tab" id="tabAlerts" onclick="switchView('alerts')">🔔 แจ้งเตือนของฉัน</button>
     </div>
 
-    <!-- ============ SEARCH VIEW ============ -->
+    <!-- ============ SEARCH VIEW (one-shot ทุกสนาม) ============ -->
     <div id="viewSearch">
       <div class="search-hero">
-        <h2>หาคอร์ตเทนนิสว่าง 🎾</h2>
-        <div class="sub">ค้นหาสนามเทนนิสใน กทม.+ปริมณฑล · เช็คคอร์ตว่าง real-time · เปรียบเทียบราคา</div>
-        <div class="search-row">
-          <div class="search-field">
-            <label>📍 โซน</label>
-            <select class="search-select" id="sZone"><option value="">ทุกโซน</option></select>
-          </div>
-          <div class="search-field">
-            <label>📅 วันที่</label>
-            <input type="date" class="search-date" id="sDate">
-          </div>
-          <div class="search-field">
-            <label>🏟 ประเภทสนาม</label>
-            <select class="search-select" id="sType">
-              <option value="">ทั้งหมด</option>
-              <option value="indoor">ในร่ม</option>
-              <option value="outdoor">กลางแจ้ง</option>
+        <h2>ค้นหาคอร์ตว่าง 🎾</h2>
+        <div class="sub">เลือกวัน เวลา สนาม แล้วกดค้นหาครั้งเดียว — ระบบเช็คคอร์ตว่างจากเว็บสนามจริงให้ทุกแห่งพร้อมกัน</div>
+
+        <div class="sh-label">📅 จะเล่นวันไหน?</div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="mWeekday" onclick="setDateMode('weekday')">วันประจำสัปดาห์ (จ อ พ ...)</button>
+          <button class="mode-btn" id="mDates" onclick="setDateMode('dates')">เลือกวันที่เจาะจง</button>
+        </div>
+        <div id="weekdayPick">
+          <div class="chip-group" id="sWeekdays"></div>
+          <div style="font-size:11px;color:#4b6280;margin-top:8px;">ค้นหาวันดังกล่าวภายใน
+            <select id="sHorizon" class="mini-select">
+              <option value="7">7 วันข้างหน้า</option>
+              <option value="14" selected>14 วันข้างหน้า</option>
+              <option value="30">30 วันข้างหน้า</option>
             </select>
           </div>
         </div>
-        <div class="search-times">
-          <label style="font-size:11px;color:#7a99b8;font-weight:600;display:block;margin-bottom:6px;">⏰ ช่วงเวลาที่อยากเล่น</label>
-          <div class="chip-group" id="sTimes"></div>
+        <div id="datesPick" style="display:none;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="date" class="search-date" id="sDateAdd" style="max-width:180px;">
+            <button class="mode-btn" style="flex:none;" onclick="addSearchDate()">+ เพิ่มวันที่</button>
+          </div>
+          <div class="chip-group" id="sDatesList" style="margin-top:10px;"></div>
         </div>
-        <button class="search-go" onclick="runSearch()">🔍 ค้นหาคอร์ต</button>
+
+        <div class="sh-label">⏰ ช่วงเวลา</div>
+        <div class="chip-group" id="sTimes"></div>
+
+        <div class="sh-label">🏟 สนาม + คอร์ตที่ต้องการ (กดชื่อสนามเพื่อเปิด/ปิด · กดชื่อคอร์ตเพื่อเลือกเฉพาะคอร์ต)</div>
+        <div id="venuePick"></div>
+
+        <button class="search-go" id="btnLiveSearch" onclick="runLiveSearch()">🔍 ค้นหาคอร์ตว่างทุกสนามในครั้งเดียว</button>
       </div>
 
-      <div class="filter-bar" id="filterBar" style="display:none;">
-        <span style="font-size:11px;color:#4b6280;">กรอง:</span>
-        <div class="fchip" id="fLive" onclick="toggleFilterLive()">⚡ เช็คว่างได้ real-time</div>
-        <select class="sort-select" id="sSort" onchange="renderSearchResults()">
-          <option value="reco">เรียง: แนะนำ</option>
-          <option value="priceAsc">ราคาต่ำ → สูง</option>
-          <option value="priceDesc">ราคาสูง → ต่ำ</option>
-        </select>
+      <div class="progress-bar-wrap" id="sProgress">
+        <div class="progress-label"><span id="sProgLabel">กำลังค้นหา...</span><span id="sProgPct" style="color:#2dd4bf;font-weight:700;"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="sProgFill"></div></div>
       </div>
-      <div class="result-count" id="resultCount"></div>
-      <div id="searchResults"></div>
+
+      <div id="liveResults"></div>
+
+      <div class="settings-card" style="margin-top:20px;">
+        <h3>📇 สนามอื่นๆ ใน กทม.+ปริมณฑล (จองทางโทร/LINE — ยังเช็คว่างออนไลน์ไม่ได้)</h3>
+        <div id="dirResults"></div>
+      </div>
     </div>
 
     <!-- ============ ALERTS VIEW ============ -->
@@ -507,7 +542,8 @@ const COURTS_DB = [
   { id:'anantara', name:'Anantara Riverside', zone:'ฝั่งธนฯ', address:'257/1-3 ถ.เจริญนคร ธนบุรี', indoor:false, surface:'Hard court', priceMin:700, priceMax:950, priceNote:'700++ ฿/ชม. · กลางคืน +ค่าไฟ 250++ ฿', phone:'024760022', hours:'07:00–20:00', openH:7, closeH:20, live:false, website:'https://www.anantara.com/en/riverside-bangkok', note:'สนามริมแม่น้ำ บรรยากาศรีสอร์ต 2 คอร์ต' },
   { id:'lumpini', name:'Lumpini Recreation Center', zone:'ปทุมวัน/สีลม', address:'สวนลุมพินี ประตู 3 ถ.พระราม 4', indoor:false, surface:'Hard court', priceMin:80, priceMax:80, priceNote:'80 ฿/ชม. + สมาชิกรายปี CSTD 20–60 ฿', phone:'022528036', hours:'07:00–19:00', openH:7, closeH:19, live:false, website:'https://www.facebook.com/lumpiniyouthcenter/', note:'ถูกที่สุดใจกลางเมือง จองผ่านแอป CSTD Smart Member' },
   { id:'olympic', name:'The Olympic Club', zone:'ปทุมวัน/สีลม', address:'ชั้น 8 โรงแรมปทุมวันปริ๊นเซส สยาม', indoor:false, surface:'Plexipave', priceMin:480, priceMax:585, priceNote:'ก่อน 18:00 น. 480 ฿ · หลัง 18:00 น. 585 ฿', phone:'022163700', hours:'06:00–23:00', openH:6, closeH:23, live:false, website:'https://www.theolympic-club.com/', note:'คอร์ตดาดฟ้าวิวเมืองย่านสยาม 2 คอร์ต' },
-  { id:'alpine', name:'Alpine Tennis Club', zone:'ลาดพร้าว/รามอินทรา', address:'ซ.นวมินทร์ 74 แยก 3 รามอินทรา', indoor:false, surface:'Hard court', priceMin:400, priceMax:600, priceNote:'จ.-ศ. ก่อน 16:00 น. 400 ฿ · อื่นๆ 600 ฿', phone:'020279773', hours:'07:00–22:00', openH:7, closeH:22, live:false, website:'https://www.facebook.com/profile.php?id=100088573323660', note:'บรรยากาศร่มรื่น เหมาะพาครอบครัว' },
+  { id:'alpine', name:'Alpine Tennis Club', zone:'ลาดพร้าว/รามอินทรา', address:'ซ.นวมินทร์ 74 แยก 3 รามอินทรา', indoor:false, surface:'Hard court', priceMin:400, priceMax:600, priceNote:'จ.-ศ. ก่อน 16:00 น. 400 ฿ · อื่นๆ 600 ฿', phone:'020279773', hours:'07:00–22:00', openH:7, closeH:22, live:false, website:'https://www.alpinetennisclub.com/app/public/index.php?page=booking', bookUrl:'https://www.alpinetennisclub.com/app/public/index.php?page=booking', note:'จองออนไลน์ได้ แต่ต้อง login ด้วย LINE ที่เว็บสนาม' },
+  { id:'aceofclubs', name:'Ace of Clubs BKK', zone:'กรุงเทพฯ', address:'กรุงเทพฯ (ดูแผนที่)', indoor:false, surface:'Hard court', priceMin:650, priceMax:750, priceNote:'650 ฿ ก่อน 16:00 น. · 750 ฿ หลัง 16:00 น.', phone:'', hours:'06:00–23:00', openH:6, closeH:23, live:true, website:'https://aceofclubsbkk.com/', bookUrl:'https://aceofclubsbkk.com/booking/', note:'5 คอร์ต · เช็คว่าง+จองออนไลน์ได้' },
   { id:'cozy', name:'CozyTennis Court', zone:'พัฒนาการ/สวนหลวง', address:'ย่านสวนหลวง–พัฒนาการ', indoor:true, surface:'Hard court (semi-indoor)', priceMin:350, priceMax:450, priceNote:'เริ่ม 350 ฿/ชม.', phone:'', line:'https://line.me/R/ti/p/@cozytennis', hours:'06:00–22:00', openH:6, closeH:22, live:false, website:'https://www.cozytennis.com/', note:'Semi-indoor 4 คอร์ต มีหลังคาไม่กลัวฝน จองผ่าน LINE' },
   { id:'chula', name:'ศูนย์กีฬาจุฬาฯ (CU Sports Complex)', zone:'ปทุมวัน/สีลม', address:'จุฬาลงกรณ์มหาวิทยาลัย', indoor:false, surface:'Hard court', priceMin:100, priceMax:300, priceNote:'บุคคลภายนอกแพงกว่านิสิต · เช็คเรทที่เว็บ', phone:'022182874', hours:'07:00–21:00', openH:7, closeH:21, live:false, website:'http://book.cusc.chula.ac.th/', bookUrl:'http://book.cusc.chula.ac.th/', note:'10 คอร์ตพร้อมไฟ จองออนไลน์ล่วงหน้าได้ 7 วัน' },
   { id:'windfield', name:'Windfield Tennis Indoor', zone:'ลาดพร้าว/รามอินทรา', address:'กรุงเทพฯ (เช็คพิกัดใน Facebook)', indoor:true, surface:'Hard court', priceMin:0, priceMax:0, priceNote:'สอบถามราคาทาง Facebook', phone:'', hours:'สอบถาม', openH:6, closeH:22, live:false, website:'https://www.facebook.com/p/100084170501555/', note:'สนามในร่ม เล่นได้ทุกสภาพอากาศ' },
@@ -584,7 +620,7 @@ async function showApp(user) {
   if (user.email === ADMIN_EMAIL) {
     document.getElementById('adminNavBtn').style.display = 'block';
   }
-  if (!window._searchInit) { window._searchInit = true; initSearchUI(); runSearch(); }
+  if (!window._searchInit) { window._searchInit = true; initSearchUI(); }
   await loadUserSettings();
   // เช็ค is_approved แล้วแสดง banner
   const { data } = await sb.from('user_settings').select('is_approved').eq('id', user.id).single();
@@ -1011,10 +1047,27 @@ async function revokeUser(id, email) {
   loadUsers();
 }
 
-// ============ SEARCH VIEW ============
+// ============ SEARCH VIEW (one-shot ทุกสนาม) ============
+// สนามที่เช็คว่างออนไลน์ได้จริง
+const LIVE_VENUES = [
+  { vid:'crystal',  name:'Crystal Sports',   provider:'crystal', locId:'LOC001',
+    bookUrl:'https://crystalsports-booking.kegroup.co.th/booking.php', priceNote:'400–600 ฿/ชม.',
+    courts:[{id:1,name:'North-1'},{id:2,name:'North-2'},{id:3,name:'North-3'},{id:4,name:'Center-1'},{id:5,name:'Center-2'},{id:6,name:'South-1'},{id:7,name:'South-2'},{id:8,name:'South-3'}] },
+  { vid:'crystalg', name:'Crystal Sports G', provider:'crystal', locId:'LOC002',
+    bookUrl:'https://crystalsports-booking.kegroup.co.th/booking.php', priceNote:'400–600 ฿/ชม.',
+    courts:[{id:18,name:'G North-1'},{id:19,name:'G North-2'},{id:20,name:'G North-3'},{id:21,name:'G Center-1'},{id:22,name:'G Center-2'},{id:23,name:'G Center-3'},{id:24,name:'G South-1'},{id:25,name:'G South-2'},{id:26,name:'G South-3'}] },
+  { vid:'ace',      name:'Ace of Clubs BKK', provider:'ace',
+    bookUrl:'https://aceofclubsbkk.com/booking/', priceNote:'650–750 ฿/ชม.',
+    courts:[{id:61,name:'Court 1'},{id:4878,name:'Court 2'},{id:4879,name:'Court 3'},{id:4880,name:'Court 4'},{id:4881,name:'Court 5'}] },
+];
+
 let sSelectedTimes = ['18:00','19:00'];
-let sFilterLive = false;
-let sResults = [];
+let sDateMode = 'weekday';           // 'weekday' | 'dates'
+let sWeekdays = [1,3];               // จ, พ (0=อาทิตย์)
+let sPickedDates = [];               // ['2026-07-08', ...]
+let sVenueOn = {};                   // vid -> bool
+let sVenueCourts = {};               // vid -> [courtIds]
+let aceCache = null;                 // {courts, bookings, ts}
 
 function switchView(v) {
   document.getElementById('tabSearch').classList.toggle('active', v==='search');
@@ -1024,118 +1077,121 @@ function switchView(v) {
 }
 
 function initSearchUI() {
-  // โซน
-  const zones = [...new Set(COURTS_DB.map(c=>c.zone))];
-  const zSel = document.getElementById('sZone');
-  zones.forEach(z => { const o=document.createElement('option'); o.value=z; o.textContent=z; zSel.appendChild(o); });
-  // วันที่ default = วันนี้
-  document.getElementById('sDate').value = fmt(new Date());
-  document.getElementById('sDate').min = fmt(new Date());
-  // เวลา
-  renderSearchTimeChips();
+  LIVE_VENUES.forEach(v => { sVenueOn[v.vid] = true; sVenueCourts[v.vid] = v.courts.map(c=>c.id); });
+  document.getElementById('sDateAdd').value = fmt(new Date());
+  document.getElementById('sDateAdd').min = fmt(new Date());
+  renderWeekdayChips(); renderSearchTimeChips(); renderVenuePick(); renderDirectory();
+}
+
+function setDateMode(m) {
+  sDateMode = m;
+  document.getElementById('mWeekday').classList.toggle('active', m==='weekday');
+  document.getElementById('mDates').classList.toggle('active', m==='dates');
+  document.getElementById('weekdayPick').style.display = m==='weekday' ? 'block' : 'none';
+  document.getElementById('datesPick').style.display = m==='dates' ? 'block' : 'none';
+}
+
+function renderWeekdayChips() {
+  document.getElementById('sWeekdays').innerHTML = ALL_DAYS.map(d =>
+    `<div class="chip${sWeekdays.includes(d.v)?' active':''}" onclick="toggleWeekday(${d.v})">${d.l}</div>`).join('');
+}
+function toggleWeekday(d) {
+  sWeekdays = sWeekdays.includes(d) ? sWeekdays.filter(x=>x!==d) : [...sWeekdays, d];
+  renderWeekdayChips();
+}
+
+function addSearchDate() {
+  const v = document.getElementById('sDateAdd').value;
+  if (v && !sPickedDates.includes(v) && v >= fmt(new Date())) { sPickedDates.push(v); sPickedDates.sort(); }
+  renderDatesList();
+}
+function removeSearchDate(v) { sPickedDates = sPickedDates.filter(x=>x!==v); renderDatesList(); }
+function renderDatesList() {
+  document.getElementById('sDatesList').innerHTML = sPickedDates.length
+    ? sPickedDates.map(d => `<div class="date-chip">${fmtTH(new Date(d+'T00:00:00'))} (${d}) <span onclick="removeSearchDate('${d}')">✕</span></div>`).join('')
+    : '<span style="font-size:12px;color:#4b6280;">ยังไม่ได้เลือกวันที่ — กด "+ เพิ่มวันที่"</span>';
 }
 
 function renderSearchTimeChips() {
   document.getElementById('sTimes').innerHTML = SEARCH_TIMES.map(t =>
-    `<div class="chip time${sSelectedTimes.includes(t)?' active':''}" onclick="toggleSearchTime('${t}')">${t}</div>`
-  ).join('');
+    `<div class="chip time${sSelectedTimes.includes(t)?' active':''}" onclick="toggleSearchTime('${t}')">${t}</div>`).join('');
 }
-
 function toggleSearchTime(t) {
   sSelectedTimes = sSelectedTimes.includes(t) ? sSelectedTimes.filter(x=>x!==t) : [...sSelectedTimes, t].sort();
   renderSearchTimeChips();
 }
 
-function toggleFilterLive() {
-  sFilterLive = !sFilterLive;
-  document.getElementById('fLive').classList.toggle('active', sFilterLive);
-  renderSearchResults();
-}
-
-function runSearch() {
-  const zone = document.getElementById('sZone').value;
-  const type = document.getElementById('sType').value;
-  sResults = COURTS_DB.filter(c => {
-    if (zone && c.zone !== zone) return false;
-    if (type==='indoor' && !c.indoor) return false;
-    if (type==='outdoor' && c.indoor) return false;
-    // กรองตามเวลาเปิด-ปิด
-    if (sSelectedTimes.length) {
-      const hs = sSelectedTimes.map(t=>parseInt(t));
-      if (!hs.some(h => h >= c.openH && h < c.closeH)) return false;
-    }
-    return true;
-  });
-  document.getElementById('filterBar').style.display = 'flex';
-  renderSearchResults();
-  document.getElementById('resultCount').scrollIntoView({behavior:'smooth', block:'start'});
-}
-
-function renderSearchResults() {
-  let list = [...sResults];
-  if (sFilterLive) list = list.filter(c=>c.live);
-  const sort = document.getElementById('sSort').value;
-  if (sort==='priceAsc') list.sort((a,b)=>(a.priceMin||99999)-(b.priceMin||99999));
-  else if (sort==='priceDesc') list.sort((a,b)=>(b.priceMin||0)-(a.priceMin||0));
-  else list.sort((a,b)=>(b.live?1:0)-(a.live?1:0) || (a.priceMin||99999)-(b.priceMin||99999)); // แนะนำ: live ก่อน แล้วถูกก่อน
-
-  document.getElementById('resultCount').textContent = `พบ ${list.length} สนาม · วันที่ ${document.getElementById('sDate').value}${sSelectedTimes.length?' · เวลา '+sSelectedTimes.join(', '):''}`;
-  const rc = document.getElementById('searchResults');
-  if (!list.length) { rc.innerHTML = '<div class="no-results">😢 ไม่พบสนามตามเงื่อนไข ลองปรับโซนหรือเวลา</div>'; return; }
-
-  rc.innerHTML = list.map(c => {
-    const price = c.priceMin ? (c.priceMin===c.priceMax ? c.priceMin.toLocaleString() : `${c.priceMin.toLocaleString()}–${c.priceMax.toLocaleString()}`) : '—';
-    const mapQ = encodeURIComponent(c.name + ' ' + (c.address||''));
-    return `
-    <div class="court-card${c.live?' live':''}">
-      <div class="cc-top">
+function renderVenuePick() {
+  document.getElementById('venuePick').innerHTML = LIVE_VENUES.map(v => `
+    <div class="venue-card ${sVenueOn[v.vid]?'on':'off'}" id="vc-${v.vid}">
+      <div class="venue-head" onclick="toggleVenue('${v.vid}')">
+        <div class="venue-check">${sVenueOn[v.vid]?'✓':''}</div>
         <div>
-          <div class="cc-name">${c.name}</div>
-          <div class="cc-badges">
-            ${c.live?'<span class="badge live-badge">⚡ เช็คว่าง real-time</span>':''}
-            <span class="badge zone">📍 ${c.zone}</span>
-            <span class="badge ${c.indoor?'indoor':'outdoor'}">${c.indoor?'🏠 ในร่ม':'☀️ กลางแจ้ง'}</span>
-            <span class="badge surface">${c.surface}</span>
-          </div>
+          <div class="venue-name">${v.name}</div>
+          <div class="venue-sub">${v.priceNote} · เลือกแล้ว ${sVenueCourts[v.vid].length}/${v.courts.length} คอร์ต</div>
         </div>
-        <div class="cc-price"><div class="amount">${price} ฿</div><div class="unit">ต่อชั่วโมง</div></div>
       </div>
-      <div class="cc-meta">
-        🕐 ${c.hours} · ${c.address}<br>
-        💰 ${c.priceNote}${c.note ? '<br>💡 '+c.note : ''}
+      <div class="venue-courts chip-group" ${sVenueOn[v.vid]?'':'style="display:none;"'}>
+        ${v.courts.map(c => `<div class="chip${sVenueCourts[v.vid].includes(c.id)?' active':''}" onclick="event.stopPropagation();toggleVenueCourt('${v.vid}',${c.id})">${c.name}</div>`).join('')}
       </div>
-      <div class="cc-actions">
-        ${c.live?`<button class="cc-btn primary" onclick="checkLiveAvail('${c.id}', this)">⚡ เช็คคอร์ตว่างเลย</button>`:''}
-        ${c.bookUrl?`<a class="cc-btn book" href="${c.bookUrl}" target="_blank">📅 จองออนไลน์</a>`:''}
-        ${c.phone?`<a class="cc-btn" href="tel:${c.phone}">📞 โทรจอง</a>`:''}
-        ${c.line?`<a class="cc-btn" href="${c.line}" target="_blank">💬 LINE</a>`:''}
-        ${c.website?`<a class="cc-btn" href="${c.website}" target="_blank">🌐 เว็บไซต์</a>`:''}
-        ${c.ig?`<a class="cc-btn" href="${c.ig}" target="_blank">📷 Instagram</a>`:''}
-        <a class="cc-btn" href="https://www.google.com/maps/search/?api=1&query=${mapQ}" target="_blank">🗺 แผนที่</a>
-        ${c.live?`<button class="cc-btn" onclick="switchView('alerts')">🔔 ตั้งแจ้งเตือน</button>`:''}
-      </div>
-      <div class="cc-avail" id="avail-${c.id}"></div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
+}
+function toggleVenue(vid) { sVenueOn[vid] = !sVenueOn[vid]; renderVenuePick(); }
+function toggleVenueCourt(vid, cid) {
+  const arr = sVenueCourts[vid];
+  sVenueCourts[vid] = arr.includes(cid) ? arr.filter(x=>x!==cid) : [...arr, cid];
+  renderVenuePick();
 }
 
-async function checkLiveAvail(courtId, btn) {
-  const c = COURTS_DB.find(x=>x.id===courtId);
-  const loc = LOCATIONS.find(l=>l.locId===c.locId);
-  if (!c || !loc) return;
-  const dateStr = document.getElementById('sDate').value;
-  const times = sSelectedTimes.length ? sSelectedTimes : SEARCH_TIMES;
-  const box = document.getElementById('avail-'+courtId);
-  box.classList.add('show');
-  box.innerHTML = '<div class="avail-loading">⏳ กำลังเช็คคอร์ตว่าง '+loc.courts.length+' คอร์ต...</div>';
-  if (btn) btn.disabled = true;
+function computeSearchDates() {
+  if (sDateMode === 'dates') return [...sPickedDates];
+  const horizon = parseInt(document.getElementById('sHorizon').value);
+  const dates = [], today = new Date();
+  for (let i=0; i<=horizon; i++) {
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    if (sWeekdays.includes(d.getDay())) dates.push(fmt(d));
+  }
+  return dates;
+}
 
-  const found = {}; times.forEach(t=>found[t]=[]);
+function setSProgress(label, pct) {
+  const w = document.getElementById('sProgress');
+  w.style.display = 'block';
+  document.getElementById('sProgLabel').textContent = label;
+  document.getElementById('sProgPct').textContent = Math.round(pct)+'%';
+  document.getElementById('sProgFill').style.width = pct+'%';
+}
+function hideSProgress() { document.getElementById('sProgress').style.display = 'none'; document.getElementById('sProgFill').style.width='0%'; }
+
+// ---- Ace of Clubs: ดึงครั้งเดียว ครอบคลุมทุกวันล่วงหน้า ----
+async function fetchAce() {
+  if (aceCache && Date.now()-aceCache.ts < 120000) return aceCache;
+  const r = await fetch('/api/ace', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({provider:'ace'}) });
+  const data = await r.json();
+  if (data.error) throw new Error('Ace: '+data.error);
+  aceCache = { ...data, ts: Date.now() };
+  return aceCache;
+}
+// คอร์ตว่างไหมช่วง date + time (จองเป็นชั่วโมง)
+function aceFreeCourts(ace, dateStr, time, allowedIds) {
+  const slotStart = `${dateStr} ${time}:00`;
+  const endH = String(parseInt(time)+1).padStart(2,'0');
+  const slotEnd = `${dateStr} ${endH}:00:00`;
+  return ace.courts
+    .filter(c => allowedIds.includes(c.id))
+    .filter(c => !ace.bookings.some(b => b.r === c.id && b.s < slotEnd && b.e > slotStart))
+    .map(c => c.title);
+}
+
+// ---- Crystal: เช็คตามวัน เฉพาะคอร์ตที่เลือก ----
+async function crystalFreeByDate(venue, dateStr, times, allowedIds) {
+  const courts = venue.courts.filter(c => allowedIds.includes(c.id));
+  const found = {}; times.forEach(t => found[t] = []);
   let total = 0, allOne = true;
   const BATCH = 4;
-  for (let i=0; i<loc.courts.length; i+=BATCH) {
-    const batch = loc.courts.slice(i, i+BATCH);
-    const results = await Promise.all(batch.map(court => fetchSlots(dateStr, court.id, loc.locId)));
+  for (let i=0; i<courts.length; i+=BATCH) {
+    const batch = courts.slice(i, i+BATCH);
+    const results = await Promise.all(batch.map(c => fetchSlots(dateStr, c.id, venue.locId)));
     for (let j=0; j<batch.length; j++) {
       for (const s of results[j]) {
         total++;
@@ -1143,20 +1199,115 @@ async function checkLiveAvail(courtId, btn) {
         if (String(s.reservestatus)==='0' && times.includes(s.timeName)) found[s.timeName].push(batch[j].name);
       }
     }
-    box.querySelector('.avail-loading') && (box.querySelector('.avail-loading').textContent = `⏳ เช็คแล้ว ${Math.min(i+BATCH, loc.courts.length)}/${loc.courts.length} คอร์ต...`);
   }
-  if (btn) btn.disabled = false;
+  return { found, notOpen: total>0 && allOne, failed: total===0 };
+}
 
-  if (total===0) { box.innerHTML = '<div class="avail-loading">❌ เช็คไม่สำเร็จ ลองใหม่อีกครั้ง</div>'; return; }
-  if (allOne) { box.innerHTML = '<div class="avail-loading">🔒 วันนี้ยังไม่เปิดให้จอง (ลองเลือกวันใกล้กว่านี้)</div>'; return; }
+// ---- ค้นหาครั้งเดียวทุกสนาม ----
+async function runLiveSearch() {
+  const dates = computeSearchDates();
+  const times = sSelectedTimes;
+  const venues = LIVE_VENUES.filter(v => sVenueOn[v.vid] && sVenueCourts[v.vid].length > 0);
+  const rbox = document.getElementById('liveResults');
 
-  const anyFree = times.some(t=>found[t].length);
-  box.innerHTML = `<div style="font-size:12px;font-weight:700;color:${anyFree?'#4ade80':'#f87171'};margin-bottom:8px;">${anyFree?'🎉 มีคอร์ตว่าง!':'😢 เต็มทุกช่วงเวลาที่เลือก'} · ${dateStr}</div>` +
-    times.map(t => `
-      <div class="avail-row"><span class="avail-time">${t}</span>
-        <span class="${found[t].length?'avail-free':'avail-full'}">${found[t].length?found[t].length+' คอร์ตว่าง':'เต็ม'}</span></div>
-      ${found[t].length?`<div class="avail-names">🎾 ${found[t].join(', ')}</div>`:''}`).join('') +
-    (anyFree && c.bookUrl ? `<a class="cc-btn book" style="margin-top:8px;" href="${c.bookUrl}" target="_blank">📅 จองเลย →</a>` : '');
+  if (!dates.length) { rbox.innerHTML = '<div class="no-results">⚠️ กรุณาเลือกวันก่อน</div>'; return; }
+  if (!times.length) { rbox.innerHTML = '<div class="no-results">⚠️ กรุณาเลือกช่วงเวลาก่อน</div>'; return; }
+  if (!venues.length) { rbox.innerHTML = '<div class="no-results">⚠️ กรุณาเลือกสนามอย่างน้อย 1 แห่ง</div>'; return; }
+
+  const btn = document.getElementById('btnLiveSearch'); btn.disabled = true;
+  rbox.innerHTML = '';
+
+  // results[date][vid] = {times: {t:[names]}, notOpen, failed}
+  const results = {};
+  dates.forEach(d => results[d] = {});
+
+  // Ace: โหลดครั้งเดียว ใช้ได้ทุกวัน
+  let ace = null, aceErr = null;
+  const aceVenue = venues.find(v => v.provider === 'ace');
+  if (aceVenue) {
+    setSProgress('โหลดข้อมูล Ace of Clubs...', 5);
+    try { ace = await fetchAce(); } catch(e) { aceErr = e.message; }
+    if (ace) dates.forEach(d => {
+      const tf = {}; times.forEach(t => tf[t] = aceFreeCourts(ace, d, t, sVenueCourts.ace));
+      results[d].ace = { times: tf };
+    });
+    else dates.forEach(d => results[d].ace = { failed: true });
+  }
+
+  // Crystal: วน วันที่ × สาขา
+  const crystalVenues = venues.filter(v => v.provider === 'crystal');
+  const totalJobs = crystalVenues.length * dates.length;
+  let done = 0;
+  for (const v of crystalVenues) {
+    for (const d of dates) {
+      setSProgress(`เช็ค ${v.name} — ${d}`, 10 + (done/Math.max(totalJobs,1))*88);
+      try {
+        const r = await crystalFreeByDate(v, d, times, sVenueCourts[v.vid]);
+        results[d][v.vid] = { times: r.found, notOpen: r.notOpen, failed: r.failed };
+      } catch { results[d][v.vid] = { failed: true }; }
+      done++;
+      renderLiveResults(results, dates, times, venues, aceErr, false);
+    }
+  }
+
+  setSProgress('เสร็จแล้ว ✅', 100);
+  setTimeout(hideSProgress, 1500);
+  renderLiveResults(results, dates, times, venues, aceErr, true);
+  btn.disabled = false;
+}
+
+function renderLiveResults(results, dates, times, venues, aceErr, final) {
+  const rbox = document.getElementById('liveResults');
+  let freeSlots = 0;
+  const dayCards = dates.map(dateStr => {
+    const d = new Date(dateStr+'T00:00:00');
+    let dayFree = 0;
+    const venueBlocks = venues.map(v => {
+      const r = results[dateStr][v.vid];
+      if (!r) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#4b6280;font-weight:400;font-size:11px;">⏳ รอเช็ค...</span></div></div>`;
+      if (r.failed) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#f87171;font-weight:400;font-size:11px;">${aceErr && v.provider==='ace' ? '❌ ดึงข้อมูลไม่สำเร็จ (proxy ยังไม่อัปเดต?)' : '❌ เช็คไม่สำเร็จ'}</span></div></div>`;
+      if (r.notOpen) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#f59e0b;font-weight:400;font-size:11px;">🔒 ยังไม่เปิดให้จองวันนี้</span></div></div>`;
+      const rows = times.map(t => {
+        const names = r.times[t] || [];
+        if (names.length) { dayFree += names.length; freeSlots++; }
+        return `<div class="dr-slot"><span class="avail-time">${t}</span>
+          <span class="${names.length?'avail-free':'avail-full'}">${names.length ? '✅ ว่าง '+names.length+' คอร์ต — '+names.join(', ') : 'เต็ม'}</span></div>`;
+      }).join('');
+      return `<div class="dr-venue">
+        <div class="dr-venue-name">${v.name}
+          <a class="cc-btn book" style="padding:4px 10px;font-size:11px;" href="${v.bookUrl}" target="_blank">📅 จองเลย</a>
+        </div>${rows}</div>`;
+    }).join('');
+    return `<div class="day-result${dayFree?' has-free':''}">
+      <div class="dr-date">${dayFree?'🎉':'📅'} ${DAY_NAMES[d.getDay()]} ${d.getDate()}/${d.getMonth()+1} <span style="font-size:11px;color:#4b6280;font-weight:400;">(${dateStr})</span></div>
+      ${venueBlocks}</div>`;
+  }).join('');
+
+  const summary = final
+    ? `<div class="summary-bar${freeSlots?'':' none'}">${freeSlots ? `🎉 พบคอร์ตว่าง ${freeSlots} ช่วงเวลา จาก ${dates.length} วันที่ค้นหา` : `😢 ไม่พบคอร์ตว่างตามเงื่อนไข — ลองเพิ่มวัน/เวลา หรือไปที่แท็บ "แจ้งเตือนของฉัน" ให้ระบบเฝ้าให้`}</div>`
+    : '';
+  rbox.innerHTML = summary + dayCards;
+}
+
+// ---- Directory สนามอื่นๆ ----
+function renderDirectory() {
+  const dir = COURTS_DB.filter(c => !c.live);
+  document.getElementById('dirResults').innerHTML = dir.map(c => {
+    const price = c.priceMin ? (c.priceMin===c.priceMax ? c.priceMin.toLocaleString() : `${c.priceMin.toLocaleString()}–${c.priceMax.toLocaleString()}`)+' ฿/ชม.' : 'สอบถาม';
+    const mapQ = encodeURIComponent(c.name+' '+(c.address||''));
+    return `<div class="dir-item">
+      <div style="min-width:200px;">
+        <div style="font-size:13px;font-weight:700;color:#dde8f0;">${c.name} <span style="font-weight:400;color:#2dd4bf;">${price}</span></div>
+        <div style="font-size:11px;color:#4b6280;">${c.zone} · ${c.indoor?'ในร่ม':'กลางแจ้ง'} · ${c.hours}${c.note?' · '+c.note:''}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${c.bookUrl?`<a class="cc-btn book" style="padding:5px 10px;font-size:11px;" href="${c.bookUrl}" target="_blank">จองออนไลน์</a>`:''}
+        ${c.phone?`<a class="cc-btn" style="padding:5px 10px;font-size:11px;" href="tel:${c.phone}">📞 โทร</a>`:''}
+        ${c.line?`<a class="cc-btn" style="padding:5px 10px;font-size:11px;" href="${c.line}" target="_blank">LINE</a>`:''}
+        <a class="cc-btn" style="padding:5px 10px;font-size:11px;" href="https://www.google.com/maps/search/?api=1&query=${mapQ}" target="_blank">🗺</a>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ============ INIT ============
