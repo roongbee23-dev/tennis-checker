@@ -1265,7 +1265,8 @@ function renderLiveResults(results, dates, times, venues, aceErr, final) {
     const venueBlocks = venues.map(v => {
       const r = results[dateStr][v.vid];
       if (!r) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#4b6280;font-weight:400;font-size:11px;">⏳ รอเช็ค...</span></div></div>`;
-      if (r.failed) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#f87171;font-weight:400;font-size:11px;">${aceErr && v.provider==='ace' ? '❌ ดึงข้อมูลไม่สำเร็จ (proxy ยังไม่อัปเดต?)' : '❌ เช็คไม่สำเร็จ'}</span></div></div>`;
+      if (r.failed) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#f59e0b;font-weight:400;font-size:11px;">${v.provider==='ace' ? '⚠️ สนามนี้ไม่ให้ระบบภายนอกเช็คอัตโนมัติ' : '❌ เช็คไม่สำเร็จ'}</span>
+        <a class="cc-btn" style="padding:4px 10px;font-size:11px;" href="${v.bookUrl}" target="_blank">🔗 ดูตารางว่างที่เว็บสนาม</a></div></div>`;
       if (r.notOpen) return `<div class="dr-venue"><div class="dr-venue-name">${v.name} <span style="color:#f59e0b;font-weight:400;font-size:11px;">🔒 ยังไม่เปิดให้จองวันนี้</span></div></div>`;
       const rows = times.map(t => {
         const names = r.times[t] || [];
