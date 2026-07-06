@@ -1,0 +1,18 @@
+name: fetch-ace
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 fetch_ace.py
+      - run: |
+          git config user.name ace-bot
+          git config user.email actions@github.com
+          git add data/ace.json
+          git diff --cached --quiet || (git commit -m "update ace data [skip ci]" && git push)
