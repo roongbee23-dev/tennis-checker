@@ -417,9 +417,8 @@
       <div class="tg-input-row">
         <input class="tg-input" id="tgChatId" placeholder="เช่น 839952182 — เปิด Telegram แล้วส่งข้อความหา @userinfobot">
         <button class="tg-save-btn" onclick="saveTelegramId()">💾 บันทึก</button>
-        <button class="tg-save-btn" onclick="testTelegram()" style="background:#0c2a4a;border-color:#1e3a5f;color:#7dd3fc;">📨 ทดสอบ</button>
       </div>
-      <div style="font-size:11px;color:#4b6280;margin-top:6px;">🔔 ใช้สำหรับรับแจ้งเตือนใน Telegram โดยค้นหาทุกๆ 30 นาที · หา Chat ID: เปิด Telegram → ค้นหา @userinfobot → กด Start</div>
+      <div style="font-size:11px;color:#4b6280;margin-top:6px;">🔔 ระบบจะส่งแจ้งเตือนเข้า Telegram ให้อัตโนมัติทุก 30 นาที เมื่อเจอคอร์ตว่างตามกลุ่มที่ตั้งไว้ · หา Chat ID: เปิด Telegram → ค้นหา @userinfobot → กด Start</div>
       <div id="tgSaveMsg" style="font-size:13px;margin-top:6px;"></div>
     </div>
 
@@ -520,7 +519,6 @@ const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PROXY_URL = "https://crystal-proxy.tennischecker.workers.dev";
-const BOT_TOKEN = "8979299516:AAEwY_fKOaflP-Y3o-DnJqKrzCViLJvel-c";
 const DAY_NAMES = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"];
 const ALL_DAYS = [{v:1,l:"จันทร์"},{v:2,l:"อังคาร"},{v:3,l:"พุธ"},{v:4,l:"พฤหัส"},{v:5,l:"ศุกร์"},{v:6,l:"เสาร์"},{v:0,l:"อาทิตย์"}];
 const ALL_TIMES = ["06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"];
@@ -733,22 +731,6 @@ function updateTgInfoBar() {
   } else {
     bar.innerHTML = `<div class="tg-warn">⚠️ กรุณาใส่ Telegram Chat ID ก่อน เพื่อรับการแจ้งเตือน · <span style="color:#f87171;cursor:pointer;text-decoration:underline;" onclick="showSubscribePopup()">สมัครสมาชิกเพื่อใช้งานเต็มรูปแบบ →</span></div>`;
   }
-}
-
-// ============ TELEGRAM ============
-async function sendTelegram(message) {
-  const chatId = document.getElementById('tgChatId').value.trim();
-  if (!chatId) return { ok: false, description: 'ไม่มี Chat ID' };
-  const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({chat_id: chatId, text: message, parse_mode:'HTML'})
-  });
-  return await res.json();
-}
-
-async function testTelegram() {
-  const d = await sendTelegram('🎾 <b>Crystal Sports Court Checker</b>\n\nการแจ้งเตือนพร้อมใช้งาน! ✅\nบัญชี: '+currentUser.email);
-  alert(d.ok ? '✅ ส่งสำเร็จ! เช็ค Telegram ได้เลย' : '❌ Error: '+d.description);
 }
 
 // ============ GROUPS ============
@@ -984,9 +966,7 @@ async function checkAll() {
     }
 
     if(alerts.length){
-      const tgLines=alerts.map(a=>`📅 <b>${a.label}</b>\n${a.lines.map(l=>'  • '+l).join('\n')}`).join('\n\n');
-      const msg=`🎾 <b>${g.name} — พบคอร์ทว่าง!</b>\n\n${tgLines}\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>`;
-      try{const d=await sendTelegram(msg);addLog(d.ok?`📲 ${g.name} ส่ง Telegram`:`❌ ${d.description}`);}catch(e){addLog(`❌ ${e.message}`);}
+      addLog(`🎾 ${g.name} พบคอร์ตว่าง — ระบบจะส่ง Telegram ให้อัตโนมัติในรอบถัดไป (ทุก 30 นาที)`);
     }
   }
 
