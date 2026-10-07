@@ -8,6 +8,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check courts
         env:
@@ -17,10 +18,12 @@ jobs:
         run: |
           python3 << 'EOF'
           import urllib.request, json, datetime, os, sys
+          from concurrent.futures import ThreadPoolExecutor
 
           SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://szckhdejflscildnuthy.supabase.co")
           SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
           TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+          PROXY_URL = "https://crystal-proxy.tennischecker.workers.dev"
           if not TOKEN:
             print("❌ Missing secret TELEGRAM_TOKEN")
             sys.exit(1)
@@ -38,39 +41,47 @@ jobs:
                        {"id":21,"name":"G Center-1"},{"id":22,"name":"G Center-2"},{"id":23,"name":"G Center-3"},
                        {"id":24,"name":"G South-1"},{"id":25,"name":"G South-2"},{"id":26,"name":"G South-3"}]}
           ]
+          DAYS_AHEAD = 15
+          UA = {"User-Agent": "TennisChecker/1.0 (+github-actions)"}
 
           # ดึง users ที่ approved และมี telegram_chat_id จาก Supabase
           def fetch_users():
             url = f"{SUPABASE_URL}/rest/v1/user_settings?is_approved=eq.true&telegram_chat_id=not.is.null&select=id,email,telegram_chat_id,court_groups"
-            req = urllib.request.Request(url, headers={
-              "apikey": SUPABASE_KEY,
-              "Authorization": f"Bearer {SUPABASE_KEY}"
-            })
-            with urllib.request.urlopen(req, timeout=10) as r:
+            req = urllib.request.Request(url, headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", **UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
               return json.loads(r.read())
 
-          def fetch_slots(date_str, stadium_id, loc_id):
-            try:
-              body = json.dumps({"date":date_str,"stadiumId":str(stadium_id),"locId":loc_id}).encode()
-              req = urllib.request.Request(
-                "https://crystalsports-booking.kegroup.co.th/api_helper.php?action=getAvailableStadiums",
-                data=body, headers={"Content-Type":"application/json"}, method="POST")
-              with urllib.request.urlopen(req, timeout=10) as r:
-                return json.loads(r.read())
-            except:
-              return []
+          # ถามสนามผ่าน crystal-proxy (ช่องทางเดียวกับหน้าเว็บ) ลองซ้ำ 1 ครั้งถ้าพลาด
+          # คืนค่า (slots, error) — error=None แปลว่าถามสำเร็จ
+          def fetch_slots(key):
+            date_str, stadium_id, loc_id = key
+            body = json.dumps({"date":date_str,"stadiumId":str(stadium_id),"locId":loc_id}).encode()
+            err = None
+            for attempt in range(2):
+              try:
+                req = urllib.request.Request(PROXY_URL, data=body, method="POST",
+                  headers={"Content-Type":"application/json", **UA})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                  data = json.loads(r.read())
+                if isinstance(data, list):
+                  return data, None
+                err = f"unexpected response: {str(data)[:100]}"
+              except Exception as e:
+                err = f"{type(e).__name__}: {e}"
+            return [], err
 
           def send_telegram(chat_id, msg):
             body = json.dumps({"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}).encode()
-            req = urllib.request.Request(
-              f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
               data=body, headers={"Content-Type":"application/json"}, method="POST")
-            urllib.request.urlopen(req, timeout=10)
+            urllib.request.urlopen(req, timeout=15)
 
-          today = datetime.date.today()
+          # ใช้เวลาไทย (runner เป็น UTC ช่วงหลัง 17:00 จะนับวันผิด)
+          today = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=7)).date()
           day_names = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"]
+          dates = [today + datetime.timedelta(days=i) for i in range(DAYS_AHEAD)]
+          def dow_of(d): return (d.weekday() + 1) % 7  # อาทิตย์=0
 
-          # ดึง users
           try:
             users = fetch_users()
             print(f"Found {len(users)} approved users")
@@ -78,66 +89,69 @@ jobs:
             print(f"❌ Failed to fetch users from Supabase: {e}")
             sys.exit(1)
 
+          # รวมกลุ่มที่ใช้งานอยู่ของทุกคน
+          jobs = []
           for user in users:
-            chat_id = user.get("telegram_chat_id", "").strip()
+            chat_id = (user.get("telegram_chat_id") or "").strip()
             email = user.get("email", "-")
             groups = user.get("court_groups") or []
-
             if not chat_id or not groups:
               print(f"Skip {email}: no chat_id or no groups")
               continue
-
-            print(f"\n=== Checking for {email} (chat_id: {chat_id}), {len(groups)} group(s) ===")
-
             for g in groups:
-              if not g.get("active", True):
-                continue
+              if not g.get("active", True): continue
+              days = [int(d) for d in g.get("days", [])]
+              times = g.get("times", [])
+              if days and times:
+                jobs.append({"email": email, "chat_id": chat_id, "name": g.get("name", "Group"), "days": days, "times": times})
 
-              target_days = [int(d) for d in g.get("days", [])]
-              target_times = g.get("times", [])
-              group_name = g.get("name", "Group")
+          # วันที่ต้องถาม = รวมทุกกลุ่ม ไม่ซ้ำ แล้วถามทุกสนามพร้อมกัน
+          need_dates = sorted({d for d in dates for j in jobs if dow_of(d) in j["days"]})
+          keys = [(d.strftime("%Y-%m-%d"), c["id"], loc["locId"]) for d in need_dates for loc in LOCATIONS for c in loc["courts"]]
+          print(f"Querying {len(keys)} court-days ({len(need_dates)} dates × {sum(len(l['courts']) for l in LOCATIONS)} courts) for {len(jobs)} group(s)")
 
-              if not target_days or not target_times:
-                continue
+          start = datetime.datetime.now()
+          with ThreadPoolExecutor(max_workers=10) as ex:
+            results = dict(zip(keys, ex.map(fetch_slots, keys)))
+          elapsed = (datetime.datetime.now() - start).total_seconds()
 
-              alerts = []
+          errors = [(k, e) for k, (_, e) in results.items() if e]
+          not_open = sum(1 for k, (s, e) in results.items() if not e and s and all(str(x.get("reservestatus")) == "1" for x in s))
+          print(f"Done in {elapsed:.1f}s — ok {len(keys)-len(errors)}, errors {len(errors)}, fully booked/not open {not_open}")
+          for k, e in errors[:5]:
+            print(f"  ⚠️ {k}: {e}")
 
-              for i in range(15):
-                d = today + datetime.timedelta(days=i)
-                dow = (d.weekday() + 1) % 7
-                if dow not in target_days:
-                  continue
+          for j in jobs:
+            alerts = []
+            for d in need_dates:
+              if dow_of(d) not in j["days"]: continue
+              date_str = d.strftime("%Y-%m-%d")
+              found = []
+              for loc in LOCATIONS:
+                for court in loc["courts"]:
+                  slots, err = results[(date_str, court["id"], loc["locId"])]
+                  if err or not slots: continue
+                  if all(str(s.get("reservestatus")) == "1" for s in slots): continue
+                  for s in slots:
+                    if str(s.get("reservestatus")) == "0" and s.get("timeName") in j["times"]:
+                      found.append(f'{loc["locName"]} {s["timeName"]} → {court["name"]}')
+              if found:
+                alerts.append(f'📅 <b>{day_names[dow_of(d)]} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
+            if alerts:
+              msg = f'🎾 <b>{j["name"]} — พบคอร์ทว่าง!</b>\n\n' + '\n\n'.join(alerts)
+              msg += '\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>'
+              try:
+                send_telegram(j["chat_id"], msg)
+                print(f"  ✅ Sent [{j['name']}] to {j['email']}")
+              except Exception as e:
+                print(f"  ❌ Telegram error [{j['name']}] {j['email']}: {e}")
+            else:
+              print(f"  No courts available for [{j['name']}] {j['email']}")
 
-                date_str = d.strftime("%Y-%m-%d")
-                found = []
-
-                for loc in LOCATIONS:
-                  for court in loc["courts"]:
-                    slots = fetch_slots(date_str, court["id"], loc["locId"])
-                    if not slots:
-                      continue
-                    all_one = all(str(s.get("reservestatus")) == "1" for s in slots)
-                    if all_one:
-                      continue
-                    for s in slots:
-                      if str(s.get("reservestatus")) == "0" and s.get("timeName") in target_times:
-                        found.append(f'{loc["locName"]} {s["timeName"]} → {court["name"]}')
-
-                if found:
-                  day_th = day_names[dow]
-                  alerts.append(f'📅 <b>{day_th} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
-
-              if alerts:
-                msg = f'🎾 <b>{group_name} — พบคอร์ทว่าง!</b>\n\n' + '\n\n'.join(alerts)
-                msg += '\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>'
-                try:
-                  send_telegram(chat_id, msg)
-                  print(f"  ✅ Sent [{group_name}] to {email}")
-                except Exception as e:
-                  print(f"  ❌ Telegram error [{group_name}] {email}: {e}")
-              else:
-                print(f"  No courts available for [{group_name}] {email}")
-
+          # error เกินครึ่ง = ข้อมูลเชื่อไม่ได้ ให้ job ขึ้นแดง
+          if keys and len(errors) > len(keys) / 2:
+            print(f"❌ Too many errors ({len(errors)}/{len(keys)}) — results unreliable")
+            sys.exit(1)
           EOF
 
   keepalive:
