@@ -810,12 +810,29 @@ function renderGroups() {
 }
 
 // ============ API ============
-async function fetchSlots(dateStr, stadiumId, locId) {
+// จำกัดจำนวน request พร้อมกันทั้งหน้า + timeout + ลองซ้ำ 1 ครั้ง
+const MAX_PARALLEL = 12;
+let _active = 0; const _queue = [];
+function _acquire(){ return new Promise(res => { if (_active < MAX_PARALLEL) { _active++; res(); } else _queue.push(res); }); }
+function _release(){ const next = _queue.shift(); if (next) next(); else _active--; }
+
+async function _fetchOnce(dateStr, stadiumId, locId, ms) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    const r = await fetch(PROXY_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({date:dateStr, stadiumId:String(stadiumId), locId}) });
+    const r = await fetch(PROXY_URL, { method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal,
+      body: JSON.stringify({date:dateStr, stadiumId:String(stadiumId), locId}) });
     const data = await r.json();
-    return Array.isArray(data) ? data : [];
-  } catch { return []; }
+    if (!Array.isArray(data)) throw new Error('bad response');
+    return data;
+  } finally { clearTimeout(t); }
+}
+
+async function fetchSlots(dateStr, stadiumId, locId) {
+  await _acquire();
+  try {
+    try { return await _fetchOnce(dateStr, stadiumId, locId, 10000); }
+    catch { try { return await _fetchOnce(dateStr, stadiumId, locId, 10000); } catch { return []; } }
+  } finally { _release(); }
 }
 
 async function checkDate(dateStr, times, onProgress) {
@@ -828,22 +845,20 @@ async function checkDate(dateStr, times, onProgress) {
     for (const court of loc.courts) allCourts.push({loc, court});
   }
 
-  // เช็คแบบ parallel 4 courts พร้อมกัน
-  const BATCH = 4;
-  for (let i = 0; i < allCourts.length; i += BATCH) {
-    const batch = allCourts.slice(i, i + BATCH);
-    const results = await Promise.all(batch.map(({loc, court}) => fetchSlots(dateStr, court.id, loc.locId)));
-    for (let j = 0; j < batch.length; j++) {
-      const {loc, court} = batch[j];
-      const slots = results[j];
-      for (const s of slots) {
-        total++;
-        if (String(s.reservestatus)!=='1') allOne=false;
-        if (String(s.reservestatus)==='0' && times.includes(s.timeName)) result[loc.locId][s.timeName].push(court.name);
-      }
-      if (onProgress) onProgress(court.name, i+j+1, allCourts.length);
+  // ยิงทุกคอร์ตพร้อมกัน (ตัวจำกัดใน fetchSlots คุมไม่ให้เกิน MAX_PARALLEL)
+  let doneCourts = 0;
+  const results = await Promise.all(allCourts.map(({loc, court}) =>
+    fetchSlots(dateStr, court.id, loc.locId).then(slots => {
+      doneCourts++; if (onProgress) onProgress(court.name, doneCourts, allCourts.length);
+      return slots;
+    })));
+  allCourts.forEach(({loc, court}, j) => {
+    for (const s of results[j]) {
+      total++;
+      if (String(s.reservestatus)!=='1') allOne=false;
+      if (String(s.reservestatus)==='0' && times.includes(s.timeName)) result[loc.locId][s.timeName].push(court.name);
     }
-  }
+  });
   if (total>0 && allOne) return null;
   return result;
 }
@@ -1195,18 +1210,14 @@ async function crystalFreeByDate(venue, dateStr, times, allowedIds) {
   const courts = venue.courts.filter(c => allowedIds.includes(c.id));
   const found = {}; times.forEach(t => found[t] = []);
   let total = 0, allOne = true;
-  const BATCH = 4;
-  for (let i=0; i<courts.length; i+=BATCH) {
-    const batch = courts.slice(i, i+BATCH);
-    const results = await Promise.all(batch.map(c => fetchSlots(dateStr, c.id, venue.locId)));
-    for (let j=0; j<batch.length; j++) {
-      for (const s of results[j]) {
-        total++;
-        if (String(s.reservestatus)!=='1') allOne = false;
-        if (String(s.reservestatus)==='0' && times.includes(s.timeName)) found[s.timeName].push(batch[j].name);
-      }
+  const results = await Promise.all(courts.map(c => fetchSlots(dateStr, c.id, venue.locId)));
+  courts.forEach((c, j) => {
+    for (const s of results[j]) {
+      total++;
+      if (String(s.reservestatus)!=='1') allOne = false;
+      if (String(s.reservestatus)==='0' && times.includes(s.timeName)) found[s.timeName].push(c.name);
     }
-  }
+  });
   return { found, notOpen: total>0 && allOne, failed: total===0 };
 }
 
@@ -1245,17 +1256,18 @@ async function runLiveSearch() {
   const crystalVenues = venues.filter(v => v.provider === 'crystal');
   const totalJobs = crystalVenues.length * dates.length;
   let done = 0;
-  for (const v of crystalVenues) {
-    for (const d of dates) {
-      setSProgress(`เช็ค ${v.name} — ${d}`, 10 + (done/Math.max(totalJobs,1))*88);
-      try {
-        const r = await crystalFreeByDate(v, d, times, sVenueCourts[v.vid]);
-        results[d][v.vid] = { times: r.found, notOpen: r.notOpen, failed: r.failed };
-      } catch { results[d][v.vid] = { failed: true }; }
-      done++;
-      renderLiveResults(results, dates, times, venues, aceErr, false);
-    }
-  }
+  setSProgress(`กำลังเช็ค ${totalJobs} วัน×สาขา พร้อมกัน...`, 10);
+  let lastRender = 0;
+  await Promise.all(crystalVenues.flatMap(v => dates.map(async d => {
+    try {
+      const r = await crystalFreeByDate(v, d, times, sVenueCourts[v.vid]);
+      results[d][v.vid] = { times: r.found, notOpen: r.notOpen, failed: r.failed };
+    } catch { results[d][v.vid] = { failed: true }; }
+    done++;
+    setSProgress(`เช็คแล้ว ${done}/${totalJobs}`, 10 + (done/Math.max(totalJobs,1))*88);
+    const now = Date.now();
+    if (now - lastRender > 400) { lastRender = now; renderLiveResults(results, dates, times, venues, aceErr, false); }
+  })));
 
   setSProgress('เสร็จแล้ว ✅', 100);
   setTimeout(hideSProgress, 1500);
