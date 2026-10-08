@@ -154,14 +154,36 @@ async function dispatchCheck(env) {
   return { ok: r.status === 204, status: r.status, error: text || undefined };
 }
 
+async function cronStatus(env) {
+  const out = { hasToken: !!env.GH_DISPATCH_TOKEN };
+  if (env.GH_DISPATCH_TOKEN) {
+    const r = await fetch('https://api.github.com/repos/roongbee23-dev/tennis-checker/actions/workflows/check.yml', {
+      headers: {
+        'Authorization': `Bearer ${env.GH_DISPATCH_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'tennischecker-cron',
+      },
+    });
+    out.readWorkflow = r.status;
+    if (!r.ok) out.error = (await r.text()).slice(0, 150);
+    const perm = r.headers.get('x-accepted-github-permissions');
+    if (perm) out.acceptedPermissions = perm;
+  }
+  return json(out);
+}
+
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(dispatchCheck(env));
+    const r = await dispatchCheck(env);
+    // ให้ Cloudflare ขึ้นสถานะ Error ถ้าสั่ง GitHub ไม่สำเร็จ (จะได้ไม่เงียบ)
+    if (!r.ok) throw new Error(`dispatch failed: status ${r.status} ${r.error || ''}`);
   },
 
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+    // ตรวจสถานะ token สำหรับ cron (อ่านอย่างเดียว ไม่สั่งรันอะไร ไม่แสดง token)
+    if (url.pathname === '/api/cron-status') return cronStatus(env);
     if (url.pathname === '/api/ace') {
       if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
       let body = {};
