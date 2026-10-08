@@ -1,6 +1,8 @@
 // Worker "app" — deploy อัตโนมัติจาก GitHub ผ่าน Workers Builds
 // 1) GET /            → เสิร์ฟ index.html ล่าสุดจาก GitHub (แคช 1 นาที)
 // 2) POST /api/ace    → ดึงตารางว่าง Ace of Clubs (แกะจากเว็บสนาม, แคช 2 นาที)
+// 3) Cron ทุก 30 นาที → สั่ง GitHub รัน workflow check.yml (ตรงเวลากว่า schedule ของ GitHub)
+//    ต้องมี secret GH_DISPATCH_TOKEN (Fine-grained PAT, Actions: Read and write)
 
 const HTML_SOURCE = 'https://raw.githubusercontent.com/roongbee23-dev/tennis-checker/main/index.html';
 
@@ -130,7 +132,33 @@ async function serveHtml() {
   });
 }
 
+// สั่ง GitHub Actions รัน check.yml ทันที (เหมือนกด Run workflow)
+async function dispatchCheck(env) {
+  if (!env.GH_DISPATCH_TOKEN) {
+    console.log('cron: missing GH_DISPATCH_TOKEN secret');
+    return { ok: false, status: 0, error: 'missing GH_DISPATCH_TOKEN' };
+  }
+  const r = await fetch('https://api.github.com/repos/roongbee23-dev/tennis-checker/actions/workflows/check.yml/dispatches', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.GH_DISPATCH_TOKEN}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'tennischecker-cron',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ref: 'main' }),
+  });
+  const text = r.status === 204 ? '' : (await r.text()).slice(0, 200);
+  console.log(`cron: dispatch status ${r.status} ${text}`);
+  return { ok: r.status === 204, status: r.status, error: text || undefined };
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(dispatchCheck(env));
+  },
+
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
