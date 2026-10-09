@@ -792,28 +792,48 @@ function renderGroups() {
 }
 
 // ============ API ============
-// จำกัดจำนวน request พร้อมกันทั้งหน้า + timeout + ลองซ้ำ 1 ครั้ง
-const MAX_PARALLEL = 12;
+// จำกัดจำนวน request พร้อมกัน + เว้นระยะ + ถ้าโดน RATE_LIMITED ให้ทุกคำขอหยุดรอแล้วค่อยถามต่อ
+const MAX_PARALLEL = 4;
+const MIN_INTERVAL_MS = 250;
 let _active = 0; const _queue = [];
+let _nextSlot = 0, _pauseUntil = 0;
 function _acquire(){ return new Promise(res => { if (_active < MAX_PARALLEL) { _active++; res(); } else _queue.push(res); }); }
 function _release(){ const next = _queue.shift(); if (next) next(); else _active--; }
+async function _waitTurn(){
+  const now = Date.now();
+  const t = Math.max(now, _nextSlot, _pauseUntil);
+  _nextSlot = t + MIN_INTERVAL_MS;
+  if (t > now) await new Promise(r => setTimeout(r, t - now));
+}
 
 async function _fetchOnce(dateStr, stadiumId, locId, ms) {
   const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
   try {
     const r = await fetch(PROXY_URL, { method:'POST', headers:{'Content-Type':'application/json'}, signal: ctrl.signal,
       body: JSON.stringify({date:dateStr, stadiumId:String(stadiumId), locId}) });
-    const data = await r.json();
-    if (!Array.isArray(data)) throw new Error('bad response');
-    return data;
+    return await r.json();
   } finally { clearTimeout(t); }
 }
 
 async function fetchSlots(dateStr, stadiumId, locId) {
   await _acquire();
   try {
-    try { return await _fetchOnce(dateStr, stadiumId, locId, 10000); }
-    catch { try { return await _fetchOnce(dateStr, stadiumId, locId, 10000); } catch { return []; } }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await _waitTurn();
+      let data;
+      try { data = await _fetchOnce(dateStr, stadiumId, locId, 10000); }
+      catch { await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue; }
+      if (Array.isArray(data)) return data;
+      if (data && data.code === 'RATE_LIMITED') {
+        const ra = Number(data.retryAfterSeconds);
+        const wait = (Math.min(Number.isFinite(ra) && ra >= 0 ? ra : 30, 90) + 2) * 1000;
+        _pauseUntil = Math.max(_pauseUntil, Date.now() + wait);
+        const lbl = document.getElementById('sProgLabel'); if (lbl) lbl.textContent = 'ระบบสนามขอให้รอสักครู่ กำลังรอแล้วค้นต่อ...';
+        continue;
+      }
+      return [];
+    }
+    return [];
   } finally { _release(); }
 }
 
