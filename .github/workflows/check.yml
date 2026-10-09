@@ -1,14 +1,14 @@
 name: Tennis Court Checker
 
+# ตั้งเวลาโดย Cloudflare Worker "app" (cron ทุก 30 นาที สั่งรันผ่าน workflow_dispatch)
+# ไม่ใช้ schedule ของ GitHub เพราะเลื่อน/ข้ามรอบบ่อย
 on:
-  schedule:
-    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check courts
         env:
@@ -17,7 +17,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
         run: |
           python3 << 'EOF'
-          import urllib.request, json, datetime, os, sys
+          import urllib.request, urllib.error, json, datetime, os, sys, time, threading
           from concurrent.futures import ThreadPoolExecutor
 
           SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://szckhdejflscildnuthy.supabase.co")
@@ -51,23 +51,49 @@ jobs:
             with urllib.request.urlopen(req, timeout=15) as r:
               return json.loads(r.read())
 
-          # ถามสนามผ่าน crystal-proxy (ช่องทางเดียวกับหน้าเว็บ) ลองซ้ำ 1 ครั้งถ้าพลาด
+          # ถามสนามผ่าน crystal-proxy แบบสุภาพ: จำกัดความถี่ และถ้าโดน RATE_LIMITED
+          # ให้ทุก thread หยุดรอตาม retryAfterSeconds แล้วค่อยถามต่อ
           # คืนค่า (slots, error) — error=None แปลว่าถามสำเร็จ
+          MIN_INTERVAL = 0.25          # ยิงไม่เกิน ~4 ครั้ง/วินาที รวมทุก thread
+          MAX_ATTEMPTS = 5
+          LOCK = threading.Lock()
+          STATE = {"next_slot": 0.0, "pause_until": 0.0, "rate_limited": 0}
+
+          def wait_turn():
+            with LOCK:
+              now = time.time()
+              t = max(now, STATE["next_slot"], STATE["pause_until"])
+              STATE["next_slot"] = t + MIN_INTERVAL
+            if t > now:
+              time.sleep(t - now)
+
           def fetch_slots(key):
             date_str, stadium_id, loc_id = key
             body = json.dumps({"date":date_str,"stadiumId":str(stadium_id),"locId":loc_id}).encode()
             err = None
-            for attempt in range(2):
+            for attempt in range(MAX_ATTEMPTS):
+              wait_turn()
               try:
                 req = urllib.request.Request(PROXY_URL, data=body, method="POST",
                   headers={"Content-Type":"application/json", **UA})
                 with urllib.request.urlopen(req, timeout=15) as r:
                   data = json.loads(r.read())
-                if isinstance(data, list):
-                  return data, None
-                err = f"unexpected response: {str(data)[:100]}"
               except Exception as e:
                 err = f"{type(e).__name__}: {e}"
+                time.sleep(1 + attempt)
+                continue
+              if isinstance(data, list):
+                return data, None
+              if isinstance(data, dict) and data.get("code") == "RATE_LIMITED":
+                ra = data.get("retryAfterSeconds")
+                wait = min(ra if isinstance(ra, (int, float)) and ra >= 0 else 30, 90) + 2
+                with LOCK:
+                  STATE["rate_limited"] += 1
+                  STATE["pause_until"] = max(STATE["pause_until"], time.time() + wait)
+                err = "RATE_LIMITED"
+                continue
+              err = f"unexpected response: {str(data)[:100]}"
+              break
             return [], err
 
           def send_telegram(chat_id, msg):
@@ -111,13 +137,13 @@ jobs:
           print(f"Querying {len(keys)} court-days ({len(need_dates)} dates × {sum(len(l['courts']) for l in LOCATIONS)} courts) for {len(jobs)} group(s)")
 
           start = datetime.datetime.now()
-          with ThreadPoolExecutor(max_workers=10) as ex:
+          with ThreadPoolExecutor(max_workers=4) as ex:
             results = dict(zip(keys, ex.map(fetch_slots, keys)))
           elapsed = (datetime.datetime.now() - start).total_seconds()
 
           errors = [(k, e) for k, (_, e) in results.items() if e]
           not_open = sum(1 for k, (s, e) in results.items() if not e and s and all(str(x.get("reservestatus")) == "1" for x in s))
-          print(f"Done in {elapsed:.1f}s — ok {len(keys)-len(errors)}, errors {len(errors)}, fully booked/not open {not_open}")
+          print(f"Done in {elapsed:.1f}s — ok {len(keys)-len(errors)}, errors {len(errors)}, fully booked/not open {not_open}, rate-limit pauses {STATE['rate_limited']}")
           for k, e in errors[:5]:
             print(f"  ⚠️ {k}: {e}")
 
@@ -154,19 +180,3 @@ jobs:
             sys.exit(1)
           EOF
 
-  keepalive:
-    needs: check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-      - name: Keep alive
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          echo "Last run: $(date)" > .last_run
-          git add .last_run
-          git commit -m "keepalive" || echo "Nothing to commit"
-          git pull --rebase origin main || true
-          git push || true
