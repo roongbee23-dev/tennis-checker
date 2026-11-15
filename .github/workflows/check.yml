@@ -2,6 +2,10 @@ name: Tennis Court Checker
 
 # ตั้งเวลาโดย Cloudflare Worker "app" (cron ทุก 30 นาที สั่งรันผ่าน workflow_dispatch)
 # ไม่ใช้ schedule ของ GitHub เพราะเลื่อน/ข้ามรอบบ่อย
+#
+# v2 (พ.ย. 2026): เว็บ Crystal Sports เปลี่ยนเป็นระบบใหม่ที่ต้องล็อกอิน (OTP + Turnstile)
+# API เก่า / crystal-proxy ใช้ไม่ได้แล้ว -> อ่านหน้า /booking (HTML) โดยใช้ session cookie
+# ของบัญชีเรา ที่เก็บไว้ใน secret CRYSTAL_COOKIE
 on:
   workflow_dispatch:
 
@@ -15,168 +19,233 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CRYSTAL_COOKIE: ${{ secrets.CRYSTAL_COOKIE }}
         run: |
           python3 << 'EOF'
-          import urllib.request, urllib.error, json, datetime, os, sys, time, threading
+          import urllib.request, urllib.error, urllib.parse, json, datetime, os, sys, time, threading
+          from html.parser import HTMLParser
           from concurrent.futures import ThreadPoolExecutor
 
-          SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://szckhdejflscildnuthy.supabase.co")
+          SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://szckhdejflscildnuthy.supabase.co"
           SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
           TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-          PROXY_URL = "https://crystal-proxy.tennischecker.workers.dev"
-          if not TOKEN:
-            print("❌ Missing secret TELEGRAM_TOKEN")
-            sys.exit(1)
-          if not SUPABASE_KEY:
-            print("❌ Missing secret SUPABASE_SERVICE_KEY")
-            sys.exit(1)
+          COOKIE = os.environ.get("CRYSTAL_COOKIE", "").strip()
+          BASE = "https://crystalsports-booking.kegroup.co.th"
+          BOOK_URL = f"{BASE}/booking"
+
+          for name, val in [("TELEGRAM_TOKEN", TOKEN), ("SUPABASE_SERVICE_KEY", SUPABASE_KEY), ("CRYSTAL_COOKIE", COOKIE)]:
+              if not val:
+                  print(f"❌ Missing secret {name}")
+                  sys.exit(1)
 
           LOCATIONS = [
-            {"locId":"LOC001","locName":"Crystal Sports",
-             "courts":[{"id":1,"name":"North-1"},{"id":2,"name":"North-2"},{"id":3,"name":"North-3"},
-                       {"id":4,"name":"Center-1"},{"id":5,"name":"Center-2"},
-                       {"id":6,"name":"South-1"},{"id":7,"name":"South-2"},{"id":8,"name":"South-3"}]},
-            {"locId":"LOC002","locName":"Crystal Sports G",
-             "courts":[{"id":18,"name":"G North-1"},{"id":19,"name":"G North-2"},{"id":20,"name":"G North-3"},
-                       {"id":21,"name":"G Center-1"},{"id":22,"name":"G Center-2"},{"id":23,"name":"G Center-3"},
-                       {"id":24,"name":"G South-1"},{"id":25,"name":"G South-2"},{"id":26,"name":"G South-3"}]}
+              {"locId": "LOC001", "locName": "Crystal Sports"},
+              {"locId": "LOC002", "locName": "Crystal Sports G"},
           ]
           DAYS_AHEAD = 15
-          UA = {"User-Agent": "TennisChecker/1.0 (+github-actions)"}
+          HEADERS = {
+              "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml",
+              "Accept-Language": "th,en;q=0.8",
+              "Cookie": COOKIE,
+          }
 
-          # ดึง users ที่ approved และมี telegram_chat_id จาก Supabase
-          def fetch_users():
-            url = f"{SUPABASE_URL}/rest/v1/user_settings?is_approved=eq.true&telegram_chat_id=not.is.null&select=id,email,telegram_chat_id,court_groups"
-            req = urllib.request.Request(url, headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}", **UA})
-            with urllib.request.urlopen(req, timeout=15) as r:
-              return json.loads(r.read())
+          # ---------- HTTP ----------
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *a, **k): return None
+          OPENER = urllib.request.build_opener(NoRedirect)
 
-          # ถามสนามผ่าน crystal-proxy แบบสุภาพ: จำกัดความถี่ และถ้าโดน RATE_LIMITED
-          # ให้ทุก thread หยุดรอตาม retryAfterSeconds แล้วค่อยถามต่อ
-          # คืนค่า (slots, error) — error=None แปลว่าถามสำเร็จ
-          MIN_INTERVAL = 0.25          # ยิงไม่เกิน ~4 ครั้ง/วินาที รวมทุก thread
-          MAX_ATTEMPTS = 5
+          class AuthExpired(Exception): pass
+
+          MIN_INTERVAL = 0.5   # ยิงไม่เกิน ~2 ครั้ง/วินาที รวมทุก thread (สุภาพกับเว็บ)
           LOCK = threading.Lock()
-          STATE = {"next_slot": 0.0, "pause_until": 0.0, "rate_limited": 0}
-
+          STATE = {"next_slot": 0.0}
           def wait_turn():
-            with LOCK:
-              now = time.time()
-              t = max(now, STATE["next_slot"], STATE["pause_until"])
-              STATE["next_slot"] = t + MIN_INTERVAL
-            if t > now:
-              time.sleep(t - now)
+              with LOCK:
+                  now = time.time()
+                  t = max(now, STATE["next_slot"])
+                  STATE["next_slot"] = t + MIN_INTERVAL
+              if t > now: time.sleep(t - now)
 
-          def fetch_slots(key):
-            date_str, stadium_id, loc_id = key
-            body = json.dumps({"date":date_str,"stadiumId":str(stadium_id),"locId":loc_id}).encode()
-            err = None
-            for attempt in range(MAX_ATTEMPTS):
-              wait_turn()
-              try:
-                req = urllib.request.Request(PROXY_URL, data=body, method="POST",
-                  headers={"Content-Type":"application/json", **UA})
-                with urllib.request.urlopen(req, timeout=15) as r:
-                  data = json.loads(r.read())
-              except Exception as e:
-                err = f"{type(e).__name__}: {e}"
-                time.sleep(1 + attempt)
-                continue
-              if isinstance(data, list):
-                return data, None
-              if isinstance(data, dict) and data.get("code") == "RATE_LIMITED":
-                ra = data.get("retryAfterSeconds")
-                wait = min(ra if isinstance(ra, (int, float)) and ra >= 0 else 30, 90) + 2
-                with LOCK:
-                  STATE["rate_limited"] += 1
-                  STATE["pause_until"] = max(STATE["pause_until"], time.time() + wait)
-                err = "RATE_LIMITED"
-                continue
-              err = f"unexpected response: {str(data)[:100]}"
-              break
-            return [], err
+          def get_page(date_str, loc_id, time_id=0):
+              q = urllib.parse.urlencode({"date": date_str, "loc": loc_id, "time": time_id, "sel": ""})
+              last = None
+              for attempt in range(3):
+                  wait_turn()
+                  try:
+                      req = urllib.request.Request(f"{BOOK_URL}?{q}", headers=HEADERS)
+                      with OPENER.open(req, timeout=20) as r:
+                          html = r.read().decode("utf-8", "replace")
+                  except urllib.error.HTTPError as e:
+                      if e.code in (301, 302, 303, 307, 308, 401, 403) and "login" in (e.headers.get("Location") or "login").lower():
+                          raise AuthExpired()
+                      last = f"HTTP {e.code}"
+                  except Exception as e:
+                      last = f"{type(e).__name__}: {e}"
+                  else:
+                      if 'name="mobile"' in html and "/account/login" in html:
+                          raise AuthExpired()
+                      return html
+                  time.sleep(2 + attempt * 2)
+              raise RuntimeError(last)
+
+          # ---------- HTML parsing ----------
+          # ช่วงเวลา: <a class="slot" href="...time=N..."><span class="slot-time">06:00</span><span class="slot-meta">ว่าง 4</span></a>
+          # สนาม:     <a class="court-tile [is-disabled]" aria-label="North-3 [จองแล้ว]" href=...>
+          class BookingParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.slots, self.courts = [], []
+                  self.cur, self.field = None, None
+              def handle_starttag(self, tag, attrs):
+                  a = dict(attrs); cls = (a.get("class") or "").split()
+                  if tag == "a" and "slot" in cls:
+                      tid = None
+                      if a.get("href"):
+                          tid = urllib.parse.parse_qs(urllib.parse.urlparse(a["href"]).query).get("time", [None])[0]
+                      self.cur = {"time": "", "meta": "", "open": "is-disabled" not in cls and bool(a.get("href")), "timeId": tid}
+                      self.slots.append(self.cur)
+                  elif tag == "span" and self.cur is not None:
+                      if "slot-time" in cls: self.field = "time"
+                      elif "slot-meta" in cls: self.field = "meta"
+                  elif tag == "a" and "court-tile" in cls:
+                      label = (a.get("aria-label") or "").replace("จองแล้ว", "").strip()
+                      self.courts.append({"name": label, "free": "is-disabled" not in cls and bool(a.get("href"))})
+              def handle_endtag(self, tag):
+                  if tag == "span": self.field = None
+                  elif tag == "a": self.cur = None
+              def handle_data(self, data):
+                  if self.cur is not None and self.field:
+                      self.cur[self.field] += data.strip()
+
+          def parse(html):
+              p = BookingParser(); p.feed(html); return p
+
+          # ---------- Supabase / Telegram ----------
+          def fetch_users():
+              url = f"{SUPABASE_URL}/rest/v1/user_settings?is_approved=eq.true&telegram_chat_id=not.is.null&select=id,email,telegram_chat_id,court_groups"
+              req = urllib.request.Request(url, headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"})
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  return json.loads(r.read())
 
           def send_telegram(chat_id, msg):
-            body = json.dumps({"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-              data=body, headers={"Content-Type":"application/json"}, method="POST")
-            urllib.request.urlopen(req, timeout=15)
+              body = json.dumps({"chat_id": chat_id, "text": msg, "parse_mode": "HTML", "disable_web_page_preview": True}).encode()
+              req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                  data=body, headers={"Content-Type": "application/json"}, method="POST")
+              urllib.request.urlopen(req, timeout=15)
 
-          # ใช้เวลาไทย (runner เป็น UTC ช่วงหลัง 17:00 จะนับวันผิด)
-          today = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=7)).date()
+          # ใช้เวลาไทย (runner เป็น UTC)
+          now_th = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=7)
+          today = now_th.date()
           day_names = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์"]
           dates = [today + datetime.timedelta(days=i) for i in range(DAYS_AHEAD)]
           def dow_of(d): return (d.weekday() + 1) % 7  # อาทิตย์=0
 
           try:
-            users = fetch_users()
-            print(f"Found {len(users)} approved users")
+              users = fetch_users()
+              print(f"Found {len(users)} approved users")
           except Exception as e:
-            print(f"❌ Failed to fetch users from Supabase: {e}")
-            sys.exit(1)
+              print(f"❌ Failed to fetch users from Supabase: {e}")
+              sys.exit(1)
 
-          # รวมกลุ่มที่ใช้งานอยู่ของทุกคน
           jobs = []
           for user in users:
-            chat_id = (user.get("telegram_chat_id") or "").strip()
-            email = user.get("email", "-")
-            groups = user.get("court_groups") or []
-            if not chat_id or not groups:
-              print(f"Skip {email}: no chat_id or no groups")
-              continue
-            for g in groups:
-              if not g.get("active", True): continue
-              days = [int(d) for d in g.get("days", [])]
-              times = g.get("times", [])
-              if days and times:
-                jobs.append({"email": email, "chat_id": chat_id, "name": g.get("name", "Group"), "days": days, "times": times})
+              chat_id = (user.get("telegram_chat_id") or "").strip()
+              email = user.get("email", "-")
+              groups = user.get("court_groups") or []
+              if not chat_id or not groups:
+                  print(f"Skip {email}: no chat_id or no groups"); continue
+              for g in groups:
+                  if not g.get("active", True): continue
+                  days = [int(d) for d in g.get("days", [])]
+                  times = g.get("times", [])
+                  if days and times:
+                      jobs.append({"email": email, "chat_id": chat_id, "name": g.get("name", "Group"), "days": days, "times": times})
 
-          # วันที่ต้องถาม = รวมทุกกลุ่ม ไม่ซ้ำ แล้วถามทุกสนามพร้อมกัน
+          def auth_expired_exit():
+              print("❌ CRYSTAL_COOKIE หมดอายุ / ถูกพาไปหน้าล็อกอิน — ต้องล็อกอินใหม่แล้วอัปเดต secret")
+              # เตือนแค่วันละ 3 ครั้ง (ช่วง 08:00, 12:00, 19:00 น.) ไม่ให้สแปมทุก 30 นาที
+              if now_th.hour in (8, 12, 19) and now_th.minute < 30:
+                  msg = ("🔑 <b>Tennis Checker: cookie หมดอายุ</b>\n\n"
+                         "บอทเช็กคอร์ทไม่ได้จนกว่าจะอัปเดต\n"
+                         "1) ล็อกอินที่เว็บ Crystal Sports\n"
+                         "2) คัดลอก cookie ใหม่\n"
+                         "3) วางใน GitHub → Settings → Secrets → <code>CRYSTAL_COOKIE</code>")
+                  for cid in {j["chat_id"] for j in jobs}:
+                      try: send_telegram(cid, msg)
+                      except Exception as e: print(f"  Telegram error: {e}")
+              sys.exit(1)
+
+          # ---------- Step 1: หน้าภาพรวมของแต่ละวัน × สาขา (time=0) ----------
           need_dates = sorted({d for d in dates for j in jobs if dow_of(d) in j["days"]})
-          keys = [(d.strftime("%Y-%m-%d"), c["id"], loc["locId"]) for d in need_dates for loc in LOCATIONS for c in loc["courts"]]
-          print(f"Querying {len(keys)} court-days ({len(need_dates)} dates × {sum(len(l['courts']) for l in LOCATIONS)} courts) for {len(jobs)} group(s)")
+          wanted_times = {}  # date -> set("06:00", ...)
+          for d in need_dates:
+              wanted_times[d] = {t for j in jobs if dow_of(d) in j["days"] for t in j["times"]}
+          day_keys = [(d, loc) for d in need_dates for loc in LOCATIONS]
+          print(f"Step 1: {len(day_keys)} pages ({len(need_dates)} dates × {len(LOCATIONS)} locations) for {len(jobs)} group(s)")
 
-          start = datetime.datetime.now()
-          with ThreadPoolExecutor(max_workers=4) as ex:
-            results = dict(zip(keys, ex.map(fetch_slots, keys)))
-          elapsed = (datetime.datetime.now() - start).total_seconds()
+          def run(fn, keys):
+              def safe(k):
+                  try: return fn(k), None
+                  except AuthExpired: return None, "AUTH"
+                  except Exception as e: return None, f"{type(e).__name__}: {e}"
+              with ThreadPoolExecutor(max_workers=2) as ex:
+                  return dict(zip(keys, ex.map(safe, keys)))
 
-          errors = [(k, e) for k, (_, e) in results.items() if e]
-          not_open = sum(1 for k, (s, e) in results.items() if not e and s and all(str(x.get("reservestatus")) == "1" for x in s))
-          print(f"Done in {elapsed:.1f}s — ok {len(keys)-len(errors)}, errors {len(errors)}, fully booked/not open {not_open}, rate-limit pauses {STATE['rate_limited']}")
+          start = time.time()
+          overview = run(lambda k: parse(get_page(k[0].strftime("%Y-%m-%d"), k[1]["locId"])).slots, day_keys)
+          if any(e == "AUTH" for _, e in overview.values()):
+              auth_expired_exit()
+
+          # ---------- Step 2: เปิดดูเฉพาะช่วงเวลาที่ "ว่าง" และตรงกับที่ผู้ใช้ต้องการ ----------
+          slot_keys = []
+          for (d, loc), (slots, err) in overview.items():
+              if err or not slots: continue
+              for s in slots:
+                  if s["open"] and s["timeId"] and s["time"] in wanted_times[d]:
+                      slot_keys.append((d, loc["locId"], s["time"], s["timeId"]))
+          print(f"Step 2: {len(slot_keys)} open time-slot pages")
+          detail = run(lambda k: [c["name"] for c in parse(get_page(k[0].strftime("%Y-%m-%d"), k[1], k[3])).courts if c["free"]], slot_keys)
+          if any(e == "AUTH" for _, e in detail.values()):
+              auth_expired_exit()
+
+          all_res = list(overview.items()) + list(detail.items())
+          errors = [(k, e) for k, (_, e) in all_res if e]
+          total = len(all_res)
+          print(f"Done in {time.time()-start:.1f}s — pages {total}, errors {len(errors)}")
           for k, e in errors[:5]:
-            print(f"  ⚠️ {k}: {e}")
+              print(f"  ⚠️ {k}: {e}")
 
+          # ไม่มีช่วงเวลาให้เลือกเลยในหน้าภาพรวม = โครงสร้างเว็บอาจเปลี่ยนอีก
+          ok_overview = [s for s, e in overview.values() if not e]
+          if ok_overview and all(len(s) == 0 for s in ok_overview):
+              print("❌ อ่านช่วงเวลาไม่ได้เลย — โครงสร้างหน้าเว็บอาจเปลี่ยน ต้องแก้ parser")
+              sys.exit(1)
+
+          loc_name = {l["locId"]: l["locName"] for l in LOCATIONS}
           for j in jobs:
-            alerts = []
-            for d in need_dates:
-              if dow_of(d) not in j["days"]: continue
-              date_str = d.strftime("%Y-%m-%d")
-              found = []
-              for loc in LOCATIONS:
-                for court in loc["courts"]:
-                  slots, err = results[(date_str, court["id"], loc["locId"])]
-                  if err or not slots: continue
-                  if all(str(s.get("reservestatus")) == "1" for s in slots): continue
-                  for s in slots:
-                    if str(s.get("reservestatus")) == "0" and s.get("timeName") in j["times"]:
-                      found.append(f'{loc["locName"]} {s["timeName"]} → {court["name"]}')
-              if found:
-                alerts.append(f'📅 <b>{day_names[dow_of(d)]} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
-            if alerts:
-              msg = f'🎾 <b>{j["name"]} — พบคอร์ทว่าง!</b>\n\n' + '\n\n'.join(alerts)
-              msg += '\n\n<a href="https://crystalsports-booking.kegroup.co.th/booking.php">👉 จองเลย</a>'
-              try:
-                send_telegram(j["chat_id"], msg)
-                print(f"  ✅ Sent [{j['name']}] to {j['email']}")
-              except Exception as e:
-                print(f"  ❌ Telegram error [{j['name']}] {j['email']}: {e}")
-            else:
-              print(f"  No courts available for [{j['name']}] {j['email']}")
+              alerts = []
+              for d in need_dates:
+                  if dow_of(d) not in j["days"]: continue
+                  found = []
+                  for (dd, loc_id, t, _), (courts, err) in detail.items():
+                      if dd != d or err or not courts or t not in j["times"]: continue
+                      found.append(f'{loc_name[loc_id]} {t} → {", ".join(courts)}')
+                  if found:
+                      found.sort()
+                      alerts.append(f'📅 <b>{day_names[dow_of(d)]} {d.day}/{d.month}</b>\n' + '\n'.join(f'  • {f}' for f in found))
+              if alerts:
+                  msg = f'🎾 <b>{j["name"]} — พบคอร์ทว่าง!</b>\n\n' + '\n\n'.join(alerts)
+                  msg += f'\n\n<a href="{BOOK_URL}">👉 จองเลย</a>'
+                  try:
+                      send_telegram(j["chat_id"], msg)
+                      print(f"  ✅ Sent [{j['name']}] to {j['email']}")
+                  except Exception as e:
+                      print(f"  ❌ Telegram error [{j['name']}] {j['email']}: {e}")
+              else:
+                  print(f"  No courts available for [{j['name']}] {j['email']}")
 
-          # error เกินครึ่ง = ข้อมูลเชื่อไม่ได้ ให้ job ขึ้นแดง
-          if keys and len(errors) > len(keys) / 2:
-            print(f"❌ Too many errors ({len(errors)}/{len(keys)}) — results unreliable")
-            sys.exit(1)
+          if total and len(errors) > total / 2:
+              print(f"❌ Too many errors ({len(errors)}/{total}) — results unreliable")
+              sys.exit(1)
           EOF
-
