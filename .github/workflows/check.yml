@@ -181,7 +181,7 @@ jobs:
           wanted_times = {}  # date -> set("06:00", ...)
           for d in need_dates:
               wanted_times[d] = {t for j in jobs if dow_of(d) in j["days"] for t in j["times"]}
-          day_keys = [(d, loc) for d in need_dates for loc in LOCATIONS]
+          day_keys = [(d, loc["locId"]) for d in need_dates for loc in LOCATIONS]
           print(f"Step 1: {len(day_keys)} pages ({len(need_dates)} dates × {len(LOCATIONS)} locations) for {len(jobs)} group(s)")
 
           def run(fn, keys):
@@ -193,17 +193,17 @@ jobs:
                   return dict(zip(keys, ex.map(safe, keys)))
 
           start = time.time()
-          overview = run(lambda k: parse(get_page(k[0].strftime("%Y-%m-%d"), k[1]["locId"])).slots, day_keys)
+          overview = run(lambda k: parse(get_page(k[0].strftime("%Y-%m-%d"), k[1])).slots, day_keys)
           if any(e == "AUTH" for _, e in overview.values()):
               auth_expired_exit()
 
           # ---------- Step 2: เปิดดูเฉพาะช่วงเวลาที่ "ว่าง" และตรงกับที่ผู้ใช้ต้องการ ----------
           slot_keys = []
-          for (d, loc), (slots, err) in overview.items():
+          for (d, loc_id), (slots, err) in overview.items():
               if err or not slots: continue
               for s in slots:
                   if s["open"] and s["timeId"] and s["time"] in wanted_times[d]:
-                      slot_keys.append((d, loc["locId"], s["time"], s["timeId"]))
+                      slot_keys.append((d, loc_id, s["time"], s["timeId"]))
           print(f"Step 2: {len(slot_keys)} open time-slot pages")
           detail = run(lambda k: [c["name"] for c in parse(get_page(k[0].strftime("%Y-%m-%d"), k[1], k[3])).courts if c["free"]], slot_keys)
           if any(e == "AUTH" for _, e in detail.values()):
