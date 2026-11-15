@@ -29,7 +29,8 @@ jobs:
           SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://szckhdejflscildnuthy.supabase.co"
           SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
           TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-          COOKIE = os.environ.get("CRYSTAL_COOKIE", "").strip()
+          COOKIE = " ".join(os.environ.get("CRYSTAL_COOKIE", "").split())
+          if COOKIE.lower().startswith("cookie:"): COOKIE = COOKIE[7:].strip()
           BASE = "https://crystalsports-booking.kegroup.co.th"
           BOOK_URL = f"{BASE}/booking"
 
@@ -56,6 +57,9 @@ jobs:
           OPENER = urllib.request.build_opener(NoRedirect)
 
           class AuthExpired(Exception): pass
+          DIAG = []  # ข้อมูลวินิจฉัยของครั้งแรกที่เข้าไม่ได้ (ไม่มีค่า cookie)
+          def note(msg):
+              if not DIAG: DIAG.append(msg)
 
           MIN_INTERVAL = 0.5   # ยิงไม่เกิน ~2 ครั้ง/วินาที รวมทุก thread (สุภาพกับเว็บ)
           LOCK = threading.Lock()
@@ -77,14 +81,20 @@ jobs:
                       with OPENER.open(req, timeout=20) as r:
                           html = r.read().decode("utf-8", "replace")
                   except urllib.error.HTTPError as e:
-                      if e.code in (301, 302, 303, 307, 308, 401, 403) and "login" in (e.headers.get("Location") or "login").lower():
-                          raise AuthExpired()
-                      last = f"HTTP {e.code}"
+                      loc = e.headers.get("Location") or ""
+                      info = f"HTTP {e.code} Location={loc.split(chr(63))[0]!r} server={e.headers.get('Server')!r} cf-mitigated={e.headers.get('cf-mitigated')!r}"
+                      if e.code in (301, 302, 303, 307, 308) and "login" in loc.lower():
+                          note(info); raise AuthExpired()
+                      if e.code in (401, 403):
+                          try: body = e.read(300).decode("utf-8", "replace")
+                          except Exception: body = ""
+                          note(info + " body=" + " ".join(body.split())[:150])
+                      last = info
                   except Exception as e:
                       last = f"{type(e).__name__}: {e}"
                   else:
                       if 'name="mobile"' in html and "/account/login" in html:
-                          raise AuthExpired()
+                          note("HTTP 200 แต่ได้หน้าล็อกอิน"); raise AuthExpired()
                       return html
                   time.sleep(2 + attempt * 2)
               raise RuntimeError(last)
@@ -163,6 +173,9 @@ jobs:
                       jobs.append({"email": email, "chat_id": chat_id, "name": g.get("name", "Group"), "days": days, "times": times})
 
           def auth_expired_exit():
+              names = [p.split("=")[0].strip() for p in COOKIE.split(";") if "=" in p]
+              print(f"   diag: {DIAG[0] if DIAG else '-'}")
+              print(f"   cookie ที่ส่งไป: ยาว {len(COOKIE)} ตัวอักษร, {len(names)} ตัว, ชื่อ = {names}")
               print("❌ CRYSTAL_COOKIE หมดอายุ / ถูกพาไปหน้าล็อกอิน — ต้องล็อกอินใหม่แล้วอัปเดต secret")
               # เตือนแค่วันละ 3 ครั้ง (ช่วง 08:00, 12:00, 19:00 น.) ไม่ให้สแปมทุก 30 นาที
               if now_th.hour in (8, 12, 19) and now_th.minute < 30:
